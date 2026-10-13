@@ -1,0 +1,48 @@
+<!--
+  EDEN CRM — كود فورم الموقع
+  1) حط لينك مشروع Intake بعد ما تنشره مكان INTAKE_URL
+  2) حط INTAKE_SECRET (من صفحة الإعدادات في البرنامج) مكان INTAKE_SECRET
+  3) غيّر اسم المشروع في data-project لكل صفحة مشروع
+-->
+<form id="eden-lead-form" data-project="Eden Walk">
+  <input name="name" placeholder="الاسم" required>
+  <input name="phone" type="tel" placeholder="رقم الموبايل" required>
+  <input name="email" type="email" placeholder="الإيميل (اختياري)">
+  <textarea name="message" placeholder="رسالتك (اختياري)"></textarea>
+  <button type="submit">ابعت</button>
+  <p id="eden-lead-done" hidden>شكرًا! هنتواصل معاك قريب.</p>
+</form>
+
+<script>
+(function () {
+  var INTAKE_URL = 'https://script.google.com/macros/s/XXXXXXXX/exec';
+  var INTAKE_SECRET = 'XXXXXXXX';
+  var form = document.getElementById('eden-lead-form');
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var q = new URLSearchParams(location.search);
+    var data = {
+      secret: INTAKE_SECRET,
+      source: 'website',
+      project: form.dataset.project || '',
+      name: form.name.value.trim(),
+      phone: form.phone.value.trim(),
+      email: form.email.value.trim(),
+      message: form.message.value.trim(),
+      page: location.pathname,
+      utm_source: q.get('utm_source') || '',
+      utm_campaign: q.get('utm_campaign') || '',
+    };
+    form.querySelector('button').disabled = true;
+    fetch(INTAKE_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(data),
+    }).finally(function () {
+      form.reset();
+      document.getElementById('eden-lead-done').hidden = false;
+    });
+  });
+})();
+</script>

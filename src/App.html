@@ -1,0 +1,697 @@
+<script>
+/* ================= EDEN CRM — الواجهة ================= */
+let ME = null, PEOPLE = [], PROJECTS = [], LEADS = [], C = null, ADMIN = null;
+const F = { q: '', owner: 'all', source: '', project: '' };
+let tab = store('tab') || 'pipeline', period = 'all', TODAY = '';
+let D = null, settingsDirty = false, selected = new Set();
+
+/* ---------- utils ---------- */
+function api(fn) {
+  const args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (res, rej) {
+    google.script.run.withSuccessHandler(res).withFailureHandler(function (e) { rej(e); })[fn].apply(null, args);
+  });
+}
+function store(k, v) { try { if (v === undefined) return localStorage.getItem('crm.' + k); localStorage.setItem('crm.' + k, v); } catch (e) { return null; } }
+function h(t, a) {
+  const e = document.createElement(t);
+  if (a) for (const x in a) {
+    const v = a[x];
+    if (v == null || v === false) continue;
+    if (x.indexOf('on') === 0 && typeof v === 'function') e.addEventListener(x.slice(2), v);
+    else if (x === 'class') e.className = v;
+    else if (x === 'style') e.style.cssText = v;
+    else if (['value', 'checked', 'disabled', 'selected', 'hidden', 'draggable', 'tabIndex'].indexOf(x) >= 0) e[x] = v;
+    else e.setAttribute(x, v === true ? '' : v);
+  }
+  const kids = Array.prototype.slice.call(arguments, 2).flat(9);
+  kids.forEach(function (c) { if (c == null || c === false || c === '') return; e.append(c.nodeType ? c : String(c)); });
+  return e;
+}
+const $ = function (id) { return document.getElementById(id); };
+const nf = new Intl.NumberFormat('en-US');
+const df = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { day: 'numeric', month: 'short' });
+const dtf = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+function addDays(s, n) { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function dayDiff(s) { return Math.round((Date.parse(s + 'T12:00:00Z') - Date.parse(TODAY + 'T12:00:00Z')) / 864e5); }
+function localToday() { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
+const digits = function (p) { return String(p || '').replace(/\D/g, ''); };
+function waNum(p) { let d = digits(p); if (d.indexOf('00') === 0) d = d.slice(2); else if (/^01\d{9}$/.test(d)) d = '2' + d; else if (/^5\d{8}$/.test(d)) d = '995' + d; return d; }
+const isMgr = function () { return ME && (ME.role === 'admin' || ME.role === 'manager'); };
+const isAdmin = function () { return ME && ME.role === 'admin'; };
+const OPEN = function (s) { return ['won', 'lost'].indexOf(s || 'new') < 0; };
+let SL = {}, SRC = {};
+function nm(email) {
+  if (!email) return 'بدون مسؤول';
+  if (email === 'system') return 'النظام';
+  const p = PEOPLE.find(function (x) { return x.email === email; });
+  const n = p ? p.name : email.split('@')[0];
+  return email === ME.email ? n + ' (أنا)' : n;
+}
+function initials(email) { const n = nm(email).replace(' (أنا)', '').trim(); return (n[0] || '?').toUpperCase(); }
+function av(email, cls) { return h('span', { class: 'av' + (cls ? ' ' + cls : ''), style: 'display:inline-grid;place-items:center;font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft)' }, email ? initials(email) : '–'); }
+function toast(msg, kind) { const r = $('toast-root'); r.replaceChildren(h('div', { class: 'toast' + (kind ? ' ' + kind : ''), role: 'status' }, msg)); clearTimeout(toast.t); toast.t = setTimeout(function () { r.replaceChildren(); }, 3500); }
+function errText(e) { return (e && e.message) ? e.message.replace(/^Exception:\s*/, '') : 'حصلت مشكلة، جرب تاني.'; }
+function fuInfo(l) {
+  if (!OPEN(l.stage)) return null;
+  if (!l.nextFollowUp) return { cls: 'none', text: 'مفيش متابعة' };
+  const d = dayDiff(l.nextFollowUp);
+  if (d < 0) return { cls: 'late', text: 'متأخر ' + (-d) + ' يوم', d: d };
+  if (d === 0) return { cls: 'today', text: 'النهارده', d: d };
+  if (d === 1) return { cls: 'soon', text: 'بكرة', d: d };
+  return { cls: 'soon', text: df.format(new Date(l.nextFollowUp + 'T12:00:00')), d: d };
+}
+function srcChip(s) { return s ? h('span', { class: 'chip' }, SRC[s] || s) : null; }
+function ownerBadge(e) { return h('span', { class: 'owner' }, av(e, 'sm'), h('span', {}, nm(e))); }
+function upsertLead(l) { const i = LEADS.findIndex(function (x) { return x.id === l.id; }); if (i >= 0) LEADS[i] = l; else LEADS.unshift(l); }
+
+/* ---------- filter ---------- */
+function visible() {
+  const q = F.q.trim().toLowerCase(), qd = digits(q);
+  return LEADS.filter(function (l) {
+    if (F.owner === 'me' && l.ownerEmail !== ME.email) return false;
+    if (F.owner === 'none' && l.ownerEmail) return false;
+    if (['all', 'me', 'none'].indexOf(F.owner) < 0 && l.ownerEmail !== F.owner) return false;
+    if (F.source && l.source !== F.source) return false;
+    if (F.project && l.project !== F.project) return false;
+    if (q) {
+      const hit = (l.name || '').toLowerCase().indexOf(q) >= 0 || (qd.length >= 3 && digits(l.phone).indexOf(qd) >= 0) ||
+        (l.unit || '').toLowerCase().indexOf(q) >= 0 || (l.email || '').toLowerCase().indexOf(q) >= 0;
+      if (!hit) return false;
+    }
+    return true;
+  });
+}
+
+/* ---------- render ---------- */
+let rq = 0;
+function render() { if (rq) return; rq = requestAnimationFrame(function () { rq = 0; doRender(); }); }
+function tabsList() {
+  const t = [['pipeline', 'Pipeline'], ['list', 'كل الليدز'], ['follow', 'المتابعات'], ['reports', 'التقارير']];
+  if (isMgr()) t.push(['settings', 'الإعدادات']);
+  return t;
+}
+function doRender() {
+  if (!ME) return;
+  if (!tabsList().some(function (t) { return t[0] === tab; })) tab = 'pipeline';
+  const late = LEADS.filter(function (l) { return (isMgr() ? true : l.ownerEmail === ME.email) && fuInfo(l) && fuInfo(l).cls === 'late'; }).length;
+  $('tabs').replaceChildren.apply($('tabs'), tabsList().map(function (t) {
+    return h('button', { class: 'tab', role: 'tab', 'aria-selected': String(tab === t[0]), onclick: function () { tab = t[0]; store('tab', tab); settingsDirty = false; selected.clear(); render(); } },
+      t[1], t[0] === 'follow' && late ? h('span', { class: 'tab-n' }, late) : null);
+  }));
+  $('me').replaceChildren(av(ME.email), h('span', {}, { admin: 'أدمن', manager: 'مدير', sales: 'سيلز' }[ME.role]));
+  $('bar').hidden = tab === 'settings';
+  $('f-owner').hidden = !isMgr();
+  renderFilters();
+  const v = $('view');
+  if (tab === 'settings') { if (!settingsDirty) v.replaceChildren(viewSettings()); }
+  else if (!LEADS.length) v.replaceChildren(welcome());
+  else {
+    const list = visible();
+    v.replaceChildren(tab === 'pipeline' ? viewPipeline(list) : tab === 'list' ? viewList(list) : tab === 'follow' ? viewFollow(list) : viewReports(list));
+  }
+}
+function fillSelect(sel, opts, val) {
+  sel.replaceChildren.apply(sel, opts.map(function (o) { return h('option', { value: o[0] }, o[1]); }));
+  sel.value = opts.some(function (o) { return o[0] === val; }) ? val : opts[0][0];
+  return sel.value;
+}
+function renderFilters() {
+  if (isMgr()) {
+    const owners = [['all', 'كل الفريق'], ['me', 'ليدزي أنا'], ['none', 'بدون مسؤول']];
+    PEOPLE.filter(function (p) { return p.email !== ME.email; }).forEach(function (p) { owners.push([p.email, p.name]); });
+    F.owner = fillSelect($('f-owner'), owners, F.owner);
+  } else F.owner = 'all';
+  F.source = fillSelect($('f-source'), [['', 'كل المصادر']].concat(C.sources), F.source);
+  const projs = PROJECTS.map(function (p) { return p.name; });
+  LEADS.forEach(function (l) { if (l.project && projs.indexOf(l.project) < 0) projs.push(l.project); });
+  F.project = fillSelect($('f-project'), [['', 'كل المشاريع']].concat(projs.map(function (p) { return [p, p]; })), F.project);
+}
+function welcome() {
+  return h('div', { class: 'welcome' },
+    h('h2', {}, 'مفيش ليدز لسه'),
+    h('p', {}, isMgr()
+      ? 'الليدز هتظهر هنا أول ما تضيفها أو توصل من Meta وفورم الموقع. قبلها ضيف المشاريع وفريق السيلز من الإعدادات.'
+      : 'لسه مفيش ليدز متسندة لك. أول ما ليد يتسند لك هيوصلك إيميل ويظهر هنا.'),
+    h('div', { class: 'acts', style: 'justify-content:flex-start' },
+      h('button', { class: 'btn primary', onclick: function () { openLead('new'); } }, 'ليد جديد'),
+      isMgr() ? h('button', { class: 'btn', onclick: function () { tab = 'settings'; store('tab', tab); render(); } }, 'الإعدادات') : null));
+}
+
+/* pipeline */
+function viewPipeline(list) {
+  return h('div', { class: 'board' }, C.stages.map(function (s) {
+    const k = s[0];
+    const items = list.filter(function (l) { return (l.stage || 'new') === k; })
+      .sort(function (a, b) { return (a.nextFollowUp || '9') < (b.nextFollowUp || '9') ? -1 : 1; });
+    const col = h('section', {
+      class: 'col', 'aria-label': s[1],
+      ondragover: function (e) { e.preventDefault(); col.classList.add('over'); },
+      ondragleave: function () { col.classList.remove('over'); },
+      ondrop: function (e) {
+        e.preventDefault(); col.classList.remove('over');
+        const l = LEADS.find(function (x) { return x.id === e.dataTransfer.getData('text/plain'); });
+        if (!l || (l.stage || 'new') === k) return;
+        if (k === 'won' || k === 'lost') openLead(l.id, k); else changeStage(l.id, k);
+      }
+    },
+      h('header', { class: 'col-h' }, h('span', { class: 'dot st-' + k }), h('span', {}, s[1]), h('span', { class: 'count' }, items.length)),
+      items.length ? items.slice(0, 200).map(card) : h('p', { class: 'col-empty' }, 'مفيش'));
+    return col;
+  }));
+}
+function card(l) {
+  const fu = fuInfo(l);
+  return h('div', {
+    class: 'card', role: 'button', tabIndex: 0, draggable: true,
+    ondragstart: function (e) { e.dataTransfer.setData('text/plain', l.id); },
+    onclick: function () { openLead(l.id); }, onkeydown: function (e) { if (e.key === 'Enter') openLead(l.id); }
+  },
+    h('div', { class: 'card-top' }, h('strong', {}, l.name || l.phone || 'بدون اسم'), srcChip(l.source)),
+    (l.project || l.unit) ? h('div', { class: 'meta' }, [l.project, l.unit].filter(Boolean).join(' · ')) : null,
+    l.stage === 'won' && l.dealValue ? h('div', { class: 'meta num' }, nf.format(l.dealValue) + ' ' + (l.currency || '')) : null,
+    l.stage === 'lost' && l.lostReason ? h('div', { class: 'meta' }, 'السبب: ' + l.lostReason) : null,
+    h('div', { class: 'card-bot' }, isMgr() ? ownerBadge(l.ownerEmail) : h('span', { class: 'meta' }, l.campaign || ''), fu ? h('span', { class: 'fu ' + fu.cls }, fu.text) : null));
+}
+
+/* list + bulk assign */
+function viewList(list) {
+  if (!list.length) return h('div', { class: 'empty' }, 'مفيش ليدز بالفلتر ده.');
+  const mgr = isMgr();
+  const bulk = mgr && selected.size ? (function () {
+    const sel = h('select', { id: 'bulk-owner' }, h('option', { value: 'auto' }, 'توزيع تلقائي'),
+      PEOPLE.map(function (p) { return h('option', { value: p.email }, p.name); }), h('option', { value: '' }, 'بدون مسؤول'));
+    const btn = h('button', { class: 'btn primary' }, 'وزّع');
+    btn.addEventListener('click', async function () {
+      btn.disabled = true;
+      try { const r = await api('api_bulkAssign', Array.from(selected), sel.value); LEADS = r.leads; selected.clear(); toast('اتوزعوا'); render(); }
+      catch (e) { toast(errText(e), 'err'); btn.disabled = false; }
+    });
+    return h('div', { class: 'bulk' }, h('span', {}, 'اخترت ' + selected.size + ' ليد'), sel, btn, h('button', { class: 'btn ghost', onclick: function () { selected.clear(); render(); } }, 'إلغاء'));
+  })() : null;
+  const allChk = mgr ? h('input', { type: 'checkbox', class: 'check', 'aria-label': 'اختار الكل', checked: list.length && list.every(function (l) { return selected.has(l.id); }),
+    onchange: function (e) { list.forEach(function (l) { e.target.checked ? selected.add(l.id) : selected.delete(l.id); }); render(); } }) : null;
+  return h('div', {},
+    h('p', { class: 'meta', style: 'margin:0 0 8px' }, nf.format(list.length) + ' ليد'),
+    bulk,
+    h('div', { class: 'tbl-wrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, mgr ? h('th', {}, allChk) : null, ['الاسم', 'الموبايل', 'المصدر', 'المشروع / الوحدة', 'المرحلة', mgr ? 'المسؤول' : null, 'المتابعة', 'اتضاف'].filter(Boolean).map(function (t) { return h('th', {}, t); }))),
+      h('tbody', {}, list.slice(0, 1000).map(function (l) {
+        const fu = fuInfo(l);
+        return h('tr', { onclick: function (e) { if (e.target.type !== 'checkbox') openLead(l.id); } },
+          mgr ? h('td', {}, h('input', { type: 'checkbox', class: 'check', checked: selected.has(l.id), 'aria-label': 'اختار', onchange: function (e) { e.target.checked ? selected.add(l.id) : selected.delete(l.id); render(); } })) : null,
+          h('td', {}, h('strong', { style: 'font-weight:600' }, l.name || '—')),
+          h('td', {}, h('span', { class: 'ltr num' }, l.phone || '—')),
+          h('td', {}, srcChip(l.source)),
+          h('td', {}, [l.project, l.unit].filter(Boolean).join(' · ') || '—'),
+          h('td', {}, h('span', { class: 'stage-pill' }, h('span', { class: 'dot st-' + (l.stage || 'new') }), SL[l.stage || 'new'])),
+          mgr ? h('td', {}, ownerBadge(l.ownerEmail)) : null,
+          h('td', {}, fu ? h('span', { class: 'fu ' + fu.cls }, fu.text) : '—'),
+          h('td', { class: 'meta' }, l.createdAt ? df.format(new Date(l.createdAt)) : '—'));
+      })))));
+}
+
+/* follow-ups */
+function viewFollow(list) {
+  const open = list.filter(function (l) { return OPEN(l.stage); });
+  const by = function (a, b) { return a.nextFollowUp < b.nextFollowUp ? -1 : 1; };
+  const fresh = open.filter(function (l) { return (l.stage || 'new') === 'new' && !l.firstContactAt; });
+  const late = open.filter(function (l) { return l.nextFollowUp && dayDiff(l.nextFollowUp) < 0; }).sort(by);
+  const tod = open.filter(function (l) { return l.nextFollowUp && dayDiff(l.nextFollowUp) === 0; });
+  const week = open.filter(function (l) { const d = l.nextFollowUp && dayDiff(l.nextFollowUp); return d > 0 && d <= 7; }).sort(by);
+  const none = open.filter(function (l) { return !l.nextFollowUp; });
+  const g = function (title, arr, empty) {
+    return h('section', { class: 'group' }, h('h2', {}, title, h('span', { class: 'count' }, arr.length)),
+      arr.length ? h('div', { class: 'rows' }, arr.map(card)) : h('div', { class: 'empty' }, empty));
+  };
+  return h('div', { class: 'groups' },
+    g('ليدز جديدة محدش كلمها', fresh, 'كل الليدز الجديدة اتكلموا.'),
+    g('متأخرة', late, 'مفيش متابعات متأخرة.'),
+    g('النهارده', tod, 'مفيش متابعات النهارده.'),
+    g('الأسبوع الجاي', week, 'مفيش متابعات متسجلة للأسبوع الجاي.'),
+    g('مفتوحة من غير ميعاد متابعة', none, 'كل الليدز المفتوحة ليها ميعاد متابعة.'));
+}
+
+/* reports */
+function viewReports(all) {
+  let list = all;
+  if (period === '30') list = all.filter(function (l) { return l.createdAt && l.createdAt.slice(0, 10) >= addDays(TODAY, -30); });
+  if (period === 'month') list = all.filter(function (l) { return l.createdAt && l.createdAt.slice(0, 7) === TODAY.slice(0, 7); });
+  const won = list.filter(function (l) { return l.stage === 'won'; }), open = list.filter(function (l) { return OPEN(l.stage); });
+  const late = open.filter(function (l) { const f = fuInfo(l); return f && f.cls === 'late'; }).length;
+  const conv = list.length ? Math.round(won.length / list.length * 1000) / 10 : 0;
+  const sums = {};
+  won.forEach(function (l) { if (Number(l.dealValue)) { const c = l.currency || 'EGP'; sums[c] = (sums[c] || 0) + Number(l.dealValue); } });
+  // متوسط وقت أول رد بالساعات
+  const resp = list.filter(function (l) { return l.firstContactAt && l.assignedAt; })
+    .map(function (l) { return (Date.parse(l.firstContactAt) - Date.parse(l.assignedAt)) / 36e5; }).filter(function (x) { return x >= 0; });
+  const avgResp = resp.length ? resp.reduce(function (a, b) { return a + b; }, 0) / resp.length : null;
+  const sel = h('select', { id: 'r-period', 'aria-label': 'الفترة', onchange: function (e) { period = e.target.value; render(); } },
+    [['all', 'كل الوقت'], ['month', 'الشهر ده'], ['30', 'آخر 30 يوم']].map(function (o) { return h('option', { value: o[0], selected: period === o[0] }, o[1]); }));
+  const kpi = function (l, v, s, cls) { return h('div', { class: 'kpi' + (cls ? ' ' + cls : '') }, h('span', {}, l), h('b', {}, v), s ? h('small', {}, s) : null); };
+  const count = function (k) { return list.filter(function (l) { return (l.stage || 'new') === k; }).length; };
+  const max = Math.max.apply(null, [1].concat(C.stages.map(function (s) { return count(s[0]); })));
+  const funnel = h('div', { class: 'panel' }, h('h3', {}, 'الليدز حسب المرحلة'), C.stages.map(function (s) {
+    const n = count(s[0]);
+    return h('div', { class: 'hb' }, h('span', {}, s[1]), h('div', { class: 'track' }, h('div', { class: 'fill', style: 'width:' + (n / max * 100) + '%;background:var(--st-' + s[0] + ')' })), h('span', { class: 'n' }, n));
+  }));
+  const bySrc = C.sources.map(function (s) {
+    return { l: s[1], n: list.filter(function (x) { return x.source === s[0]; }).length, w: list.filter(function (x) { return x.source === s[0] && x.stage === 'won'; }).length };
+  }).filter(function (x) { return x.n; }).sort(function (a, b) { return b.n - a.n; });
+  const smax = Math.max.apply(null, [1].concat(bySrc.map(function (x) { return x.n; })));
+  const src = h('div', { class: 'panel' }, h('h3', {}, 'المصادر'),
+    bySrc.length ? bySrc.map(function (x) {
+      return h('div', { class: 'hb' }, h('span', {}, x.l), h('div', { class: 'track' }, h('div', { class: 'fill', style: 'width:' + (x.n / smax * 100) + '%;opacity:.35' }), h('div', { class: 'fill won', style: 'width:' + (x.w / smax * 100) + '%' })), h('span', { class: 'n' }, x.w + '/' + x.n));
+    }) : h('p', { class: 'meta' }, 'مفيش بيانات.'),
+    h('div', { class: 'legend' }, h('span', {}, h('i', { style: 'background:var(--accent);opacity:.35' }), 'كل الليدز'), h('span', {}, h('i', { style: 'background:var(--ok)' }), 'اتباعت')));
+  const byProj = {};
+  list.forEach(function (l) { const p = l.project || 'من غير مشروع'; byProj[p] = byProj[p] || { n: 0, w: 0 }; byProj[p].n++; if (l.stage === 'won') byProj[p].w++; });
+  const proj = h('div', { class: 'panel' }, h('h3', {}, 'المشاريع'), h('table', {},
+    h('thead', {}, h('tr', {}, ['المشروع', 'ليدز', 'اتباعت', 'تحويل'].map(function (t) { return h('th', {}, t); }))),
+    h('tbody', {}, Object.keys(byProj).sort(function (a, b) { return byProj[b].n - byProj[a].n; }).map(function (p) {
+      const x = byProj[p];
+      return h('tr', {}, h('td', {}, p), h('td', { class: 'n' }, x.n), h('td', { class: 'n' }, x.w), h('td', { class: 'n' }, Math.round(x.w / x.n * 100) + '%'));
+    }))));
+  const lostR = {};
+  list.filter(function (l) { return l.stage === 'lost'; }).forEach(function (l) { const r = l.lostReason || 'من غير سبب'; lostR[r] = (lostR[r] || 0) + 1; });
+  const lmax = Math.max.apply(null, [1].concat(Object.values(lostR)));
+  const lost = h('div', { class: 'panel' }, h('h3', {}, 'أسباب الخسارة'),
+    Object.keys(lostR).length ? Object.keys(lostR).sort(function (a, b) { return lostR[b] - lostR[a]; }).map(function (r) {
+      return h('div', { class: 'hb' }, h('span', {}, r), h('div', { class: 'track' }, h('div', { class: 'fill', style: 'width:' + (lostR[r] / lmax * 100) + '%;background:var(--danger)' })), h('span', { class: 'n' }, lostR[r]));
+    }) : h('p', { class: 'meta' }, 'مفيش ليدز خسرانة في الفترة دي.'));
+  let team = null;
+  if (isMgr()) {
+    const ids = []; list.forEach(function (l) { const k = l.ownerEmail || ''; if (ids.indexOf(k) < 0) ids.push(k); });
+    const rows = ids.map(function (id) {
+      const m = list.filter(function (l) { return (l.ownerEmail || '') === id; });
+      const w = m.filter(function (l) { return l.stage === 'won'; }).length;
+      const rs = m.filter(function (l) { return l.firstContactAt && l.assignedAt; }).map(function (l) { return (Date.parse(l.firstContactAt) - Date.parse(l.assignedAt)) / 36e5; }).filter(function (x) { return x >= 0; });
+      return { id: id, n: m.length, o: m.filter(function (l) { return OPEN(l.stage); }).length, w: w, c: m.length ? Math.round(w / m.length * 100) : 0,
+        late: m.filter(function (l) { const f = fuInfo(l); return f && f.cls === 'late'; }).length,
+        resp: rs.length ? rs.reduce(function (a, b) { return a + b; }, 0) / rs.length : null };
+    }).sort(function (a, b) { return b.w - a.w || b.n - a.n; });
+    team = h('div', { class: 'panel', style: 'grid-column:1/-1' }, h('h3', {}, 'أداء فريق السيلز'), h('div', { style: 'overflow-x:auto' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['المسؤول', 'ليدز', 'مفتوحة', 'اتباعت', 'تحويل', 'متوسط أول رد', 'متأخرة'].map(function (t) { return h('th', {}, t); }))),
+      h('tbody', {}, rows.map(function (r) {
+        return h('tr', {}, h('td', {}, r.id ? ownerBadge(r.id) : h('span', { class: 'meta' }, 'بدون مسؤول')), h('td', { class: 'n' }, r.n), h('td', { class: 'n' }, r.o), h('td', { class: 'n' }, r.w), h('td', { class: 'n' }, r.c + '%'),
+          h('td', { class: 'n' }, r.resp == null ? '—' : fmtHours(r.resp)),
+          h('td', { class: 'n', style: r.late ? 'color:var(--danger);font-weight:600' : '' }, r.late));
+      })))));
+  }
+  return h('div', {},
+    h('div', { class: 'rep-head' }, h('h2', {}, isMgr() ? 'تقارير الفريق' : 'تقاريري'), sel),
+    h('div', { class: 'kpis' },
+      kpi('إجمالي الليدز', nf.format(list.length)), kpi('مفتوحة', nf.format(open.length)),
+      kpi('اتباعت', nf.format(won.length), Object.keys(sums).map(function (c) { return nf.format(sums[c]) + ' ' + c; }).join(' · ') || null),
+      kpi('نسبة التحويل', conv + '%'), kpi('متوسط أول رد', avgResp == null ? '—' : fmtHours(avgResp)),
+      kpi('متابعات متأخرة', nf.format(late), null, late ? 'alert' : '')),
+    h('div', { class: 'rep-grid' }, funnel, src, proj, lost, team));
+}
+function fmtHours(x) { return x < 1 ? Math.round(x * 60) + ' دقيقة' : x < 48 ? (Math.round(x * 10) / 10) + ' ساعة' : Math.round(x / 24) + ' يوم'; }
+
+/* ---------- settings ---------- */
+function dirty() { settingsDirty = true; }
+function viewSettings() {
+  const wrap = h('div', { class: 'sets' });
+  wrap.append(projectsSec(), importSec());
+  if (isAdmin() && ADMIN) wrap.append(usersSec(), automationSec(), metaSec(), websiteSec());
+  return wrap;
+}
+function projectsSec() {
+  const projs = JSON.parse(JSON.stringify(PROJECTS));
+  const box = h('div', {});
+  const draw = function () {
+    box.replaceChildren.apply(box, projs.map(function (p, i) {
+      return h('div', { class: 'proj' },
+        h('div', { class: 'proj-row' },
+          h('input', { type: 'text', id: 'p-name-' + i, value: p.name || '', placeholder: 'اسم المشروع', oninput: function (e) { p.name = e.target.value; dirty(); } }),
+          h('input', { type: 'text', id: 'p-country-' + i, value: p.country || '', placeholder: 'البلد', style: 'flex:0 1 140px', oninput: function (e) { p.country = e.target.value; dirty(); } }),
+          h('button', { class: 'btn ghost danger', onclick: function () { projs.splice(i, 1); dirty(); draw(); } }, 'شيل')),
+        h('textarea', { id: 'p-units-' + i, rows: 2, placeholder: 'أكواد الوحدات، كل وحدة في سطر أو بينهم فاصلة', value: (p.units || []).join('، '),
+          oninput: function (e) { p.units = e.target.value.split(/[\n,،]+/).map(function (s) { return s.trim(); }).filter(Boolean); dirty(); } }));
+    }).concat(projs.length ? [] : [h('p', { class: 'meta' }, 'لسه مفيش مشاريع.')]));
+  };
+  draw();
+  const save = h('button', { class: 'btn primary' }, 'احفظ المشاريع');
+  save.addEventListener('click', async function () {
+    save.disabled = true;
+    try { PROJECTS = await api('api_saveProjects', projs); settingsDirty = false; toast('اتحفظ'); render(); }
+    catch (e) { toast(errText(e), 'err'); save.disabled = false; }
+  });
+  return h('section', { class: 'sec' }, h('h2', {}, 'المشاريع والوحدات'),
+    h('p', { class: 'hint' }, 'المشاريع بتظهر في فورم الليد، والوحدات بتظهر كاقتراحات لما تختار المشروع.'),
+    box, h('div', { class: 'acts', style: 'justify-content:flex-start' },
+      h('button', { class: 'btn', onclick: function () { projs.push({ name: '', units: [] }); dirty(); draw(); } }, '+ مشروع'), save));
+}
+function parseCSV(t) {
+  t = t.replace(/^\uFEFF/, '');
+  const first = t.split('\n')[0] || '';
+  const d = first.indexOf('\t') >= 0 ? '\t' : (first.split(';').length > first.split(',').length ? ';' : ',');
+  const rows = []; let r = [], f = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === d) { r.push(f); f = ''; }
+    else if (c === '\n') { r.push(f); rows.push(r); r = []; f = ''; }
+    else if (c !== '\r') f += c;
+  }
+  if (f || r.length) { r.push(f); rows.push(r); }
+  return rows.filter(function (x) { return x.some(function (y) { return y.trim(); }); });
+}
+function parseLeads(t) {
+  const rows = parseCSV(t || '');
+  if (rows.length < 2) return [];
+  const H = rows[0].map(function (x) { return x.trim().toLowerCase(); });
+  const col = function (keys) { return H.findIndex(function (x) { return keys.indexOf(x) >= 0; }); };
+  const ci = { name: col(['full_name', 'full name', 'name', 'الاسم', 'اسم']), phone: col(['phone_number', 'phone', 'mobile', 'الموبايل', 'رقم الموبايل', 'التليفون']),
+    email: col(['email', 'الإيميل']), camp: col(['campaign_name', 'campaign', 'الحملة']), project: col(['project', 'المشروع']), note: col(['notes', 'note', 'ملاحظات', 'ad_name', 'form_name']) };
+  if (ci.name < 0 && ci.phone < 0) return [];
+  return rows.slice(1).map(function (r) {
+    const g = function (i) { return i >= 0 ? (r[i] || '').trim() : ''; };
+    return { name: g(ci.name), phone: g(ci.phone).replace(/^p:/i, ''), email: g(ci.email), campaign: g(ci.camp), project: g(ci.project), note: g(ci.note) };
+  }).filter(function (x) { return x.name || x.phone; });
+}
+function importSec() {
+  const ta = h('textarea', { id: 'imp-text', rows: 6, placeholder: 'الصق هنا محتوى ملف CSV (أول سطر فيه أسماء الأعمدة)' });
+  const src = h('select', { id: 'imp-src' }, C.sources.map(function (s) { return h('option', { value: s[0], selected: s[0] === 'meta' }, s[1]); }));
+  const proj = h('select', { id: 'imp-proj' }, h('option', { value: '' }, 'من غير مشروع'), PROJECTS.map(function (p) { return h('option', { value: p.name }, p.name); }));
+  const info = h('p', { class: 'status', style: 'margin:0' });
+  const btn = h('button', { class: 'btn primary', disabled: true }, 'استورد ووزّع');
+  const preview = function () { dirty(); const n = parseLeads(ta.value).length; info.textContent = n ? 'لقيت ' + n + ' ليد. المكرر هيتسجل على الليد القديم بدل ما يتضاف تاني.' : (ta.value.trim() ? 'مش لاقي عمود اسم أو موبايل في أول سطر.' : ''); btn.disabled = !n; };
+  ta.addEventListener('input', preview);
+  const file = h('input', { type: 'file', id: 'imp-file', accept: '.csv,.tsv,.txt', onchange: async function (e) {
+    const f = e.target.files[0]; if (!f) return;
+    const buf = await f.arrayBuffer(); const b = new Uint8Array(buf);
+    ta.value = b[0] === 0xFF && b[1] === 0xFE ? new TextDecoder('utf-16le').decode(buf) : b[0] === 0xFE && b[1] === 0xFF ? new TextDecoder('utf-16be').decode(buf) : new TextDecoder('utf-8').decode(buf);
+    preview();
+  } });
+  btn.addEventListener('click', async function () {
+    const rows = parseLeads(ta.value); if (!rows.length) return;
+    btn.disabled = true; info.textContent = 'بيستورد ' + rows.length + ' ليد...';
+    try {
+      const r = await api('api_importRows', rows, src.value, proj.value);
+      LEADS = r.leads; settingsDirty = false;
+      toast('اتضاف ' + r.added + ' ليد' + (r.dups ? '، و' + r.dups + ' كانوا موجودين' : ''));
+      render();
+    } catch (e) { info.textContent = errText(e); info.className = 'status err'; btn.disabled = false; }
+  });
+  return h('section', { class: 'sec' }, h('h2', {}, 'استيراد ليدز (CSV)'),
+    h('p', { class: 'hint' }, 'لليدز القديمة أو أي شيت. الأعمدة المعروفة: full_name / name / الاسم، phone_number / phone / الموبايل، email، campaign_name، project. الليدز بتتوزع أوتوماتيك على الفريق.'),
+    h('div', { style: 'display:grid;gap:10px' }, file, ta,
+      h('div', { class: 'proj-row' }, h('div', { class: 'field' }, h('label', { for: 'imp-src' }, 'المصدر'), src), h('div', { class: 'field' }, h('label', { for: 'imp-proj' }, 'المشروع'), proj)),
+      info, h('div', { class: 'acts', style: 'justify-content:flex-start' }, btn)));
+}
+function usersSec() {
+  const users = JSON.parse(JSON.stringify(ADMIN.users));
+  const body = h('tbody', {});
+  const draw = function () {
+    body.replaceChildren.apply(body, users.map(function (u, i) {
+      return h('tr', {},
+        h('td', {}, h('input', { type: 'email', id: 'u-email-' + i, value: u.email, dir: 'ltr', placeholder: 'name@edenalkhalij.com', oninput: function (e) { u.email = e.target.value.trim().toLowerCase(); dirty(); } })),
+        h('td', {}, h('input', { type: 'text', id: 'u-name-' + i, value: u.name || '', placeholder: 'الاسم', oninput: function (e) { u.name = e.target.value; dirty(); } })),
+        h('td', {}, h('select', { id: 'u-role-' + i, onchange: function (e) { u.role = e.target.value; dirty(); } },
+          [['sales', 'سيلز'], ['manager', 'مدير'], ['admin', 'أدمن']].map(function (r) { return h('option', { value: r[0], selected: u.role === r[0] }, r[1]); }))),
+        h('td', { style: 'text-align:center' }, h('input', { type: 'checkbox', class: 'check', id: 'u-recv-' + i, checked: u.receivesLeads, 'aria-label': 'بيستقبل ليدز', onchange: function (e) { u.receivesLeads = e.target.checked; dirty(); } })),
+        h('td', { style: 'text-align:center' }, h('input', { type: 'checkbox', class: 'check', id: 'u-active-' + i, checked: u.active, 'aria-label': 'نشط', onchange: function (e) { u.active = e.target.checked; dirty(); } })));
+    }));
+  };
+  draw();
+  const save = h('button', { class: 'btn primary' }, 'احفظ الفريق');
+  save.addEventListener('click', async function () {
+    save.disabled = true;
+    try {
+      ADMIN = await api('api_saveUsers', users);
+      PEOPLE = ADMIN.users.filter(function (u) { return u.active; }).map(function (u) { return { email: u.email, name: u.name || u.email, role: u.role, receivesLeads: u.receivesLeads }; });
+      settingsDirty = false; toast('اتحفظ'); render();
+    } catch (e) { toast(errText(e), 'err'); save.disabled = false; }
+  });
+  return h('section', { class: 'sec' }, h('h2', {}, 'الفريق والصلاحيات'),
+    h('p', { class: 'hint' }, 'أي حد هيدخل البرنامج لازم يبقى هنا بإيميل الشركة. السيلز بيشوف ليدزه بس، المدير بيشوف الكل ويوزّع، والأدمن بيتحكم في الإعدادات. «بيستقبل ليدز» يعني داخل في التوزيع التلقائي. لو حد ساب الشركة اشيل علامة «نشط» ووزّع ليدزه.'),
+    h('div', { class: 'tbl-wrap' }, h('table', { class: 'users-tbl', style: 'min-width:640px' },
+      h('thead', {}, h('tr', {}, ['الإيميل', 'الاسم', 'الدور', 'بيستقبل ليدز', 'نشط'].map(function (t) { return h('th', {}, t); }))), body)),
+    h('div', { class: 'acts', style: 'justify-content:flex-start;margin-top:10px' },
+      h('button', { class: 'btn', onclick: function () { users.push({ email: '', name: '', role: 'sales', active: true, receivesLeads: true }); dirty(); draw(); } }, '+ عضو'), save));
+}
+function automationSec() {
+  const s = ADMIN.settings;
+  const fields = [['SLA_FIRST_CONTACT_HOURS', 'تنبيه لو الليد الجديد محدش كلمه بعد (ساعات)', '0 = إيقاف'],
+    ['AUTO_REASSIGN_HOURS', 'نقل الليد لسيلز تاني لو محدش كلمه بعد (ساعات)', '0 = إيقاف'],
+    ['MAX_REASSIGNS', 'أقصى عدد مرات نقل لنفس الليد', ''],
+    ['DIGEST_HOUR', 'ساعة إيميل المتابعات الصباحي', 'بتوقيت القاهرة، من 0 لـ 23']];
+  const vals = {};
+  const grid = h('div', { class: 'kv' }, fields.map(function (f) {
+    vals[f[0]] = s[f[0]];
+    return [h('label', { for: 'set-' + f[0] }, f[1], f[2] ? h('small', {}, f[2]) : null),
+      h('input', { type: 'number', min: 0, id: 'set-' + f[0], value: s[f[0]], oninput: function (e) { vals[f[0]] = e.target.value; dirty(); } })];
+  }));
+  const save = h('button', { class: 'btn primary' }, 'احفظ');
+  save.addEventListener('click', async function () {
+    save.disabled = true;
+    try { ADMIN = await api('api_saveSettings', vals); settingsDirty = false; toast('اتحفظ'); render(); } catch (e) { toast(errText(e), 'err'); save.disabled = false; }
+  });
+  const run = h('button', { class: 'btn' }, 'شغّل الأتمتة دلوقتي');
+  run.addEventListener('click', async function () {
+    run.disabled = true; run.textContent = 'بيشتغل...';
+    try { ADMIN = await api('api_runAutomationsNow'); const r = await api('api_listLeads'); LEADS = r.leads; toast('خلصت'); settingsDirty = false; render(); }
+    catch (e) { toast(errText(e), 'err'); run.disabled = false; run.textContent = 'شغّل الأتمتة دلوقتي'; }
+  });
+  return h('section', { class: 'sec' }, h('h2', {}, 'الأتمتة والتنبيهات'),
+    h('p', { class: 'hint' }, 'كل 10 دقايق: سحب ليدز Meta والموقع وتوزيعها، تنبيه السيلز والمدير لو ليد جديد عدّى وقت الرد، ونقله لزميل لو فضل من غير تواصل. وكل يوم الصبح: إيميل لكل سيلز بمتابعاته وملخص للمديرين.'),
+    grid,
+    h('p', { class: 'status' + (ADMIN.lastError ? ' err' : '') }, 'آخر تشغيل: ' + (ADMIN.lastAutomation ? dtf.format(new Date(ADMIN.lastAutomation)) : 'لسه') + (ADMIN.lastError ? ' · مشكلة: ' + ADMIN.lastError : '')),
+    h('div', { class: 'acts', style: 'justify-content:flex-start' }, save, run));
+}
+function metaSec() {
+  const s = ADMIN.settings;
+  const token = h('input', { type: 'password', id: 'meta-token', placeholder: ADMIN.metaTokenSet ? 'متسجل ✓ — اكتب جديد لو عايز تغيره' : 'Page Access Token', autocomplete: 'off', style: 'width:100%', dir: 'ltr', oninput: dirty });
+  const forms = h('textarea', { id: 'meta-forms', rows: 3, dir: 'ltr', placeholder: '1234567890123456:Eden Walk', value: s.META_FORM_IDS || '', oninput: dirty });
+  const out = h('pre', { class: 'mono', hidden: true });
+  const save = h('button', { class: 'btn primary' }, 'احفظ');
+  save.addEventListener('click', async function () {
+    save.disabled = true;
+    const m = { META_FORM_IDS: forms.value }; if (token.value.trim()) m.META_PAGE_TOKEN = token.value.trim();
+    try { ADMIN = await api('api_saveSettings', m); settingsDirty = false; toast('اتحفظ'); render(); } catch (e) { toast(errText(e), 'err'); save.disabled = false; }
+  });
+  const test = h('button', { class: 'btn' }, 'اختبر الاتصال');
+  test.addEventListener('click', async function () {
+    test.disabled = true; out.hidden = false; out.textContent = 'بيختبر...';
+    try { const r = await api('api_testMeta'); out.textContent = r.message; } catch (e) { out.textContent = errText(e); }
+    test.disabled = false;
+  });
+  return h('section', { class: 'sec' }, h('h2', {}, 'Meta Lead Ads'),
+    h('p', { class: 'hint' }, 'البرنامج بيسحب الليدز الجديدة من فورمات إعلانات فيسبوك وإنستجرام كل 10 دقايق ويوزعها. محتاج Page Access Token فيه صلاحية leads_retrieval، وID كل فورم مع اسم المشروع بتاعه في سطر.'),
+    h('div', { style: 'display:grid;gap:10px' },
+      h('div', { class: 'field' }, h('label', { for: 'meta-token' }, 'Page Access Token'), token),
+      h('div', { class: 'field' }, h('label', { for: 'meta-forms' }, 'الفورمات (FormID:المشروع — كل فورم في سطر)'), forms),
+      h('p', { class: 'status' }, 'آخر سحب: ' + (ADMIN.lastMetaSync ? dtf.format(new Date(ADMIN.lastMetaSync)) : 'لسه')),
+      out, h('div', { class: 'acts', style: 'justify-content:flex-start' }, save, test)));
+}
+function websiteSec() {
+  return h('section', { class: 'sec' }, h('h2', {}, 'فورم الموقع'),
+    h('p', { class: 'hint' }, 'فورم الموقع بيبعت لمشروع Intake، والبرنامج بيسحب منه كل 10 دقايق. الكود الجاهز للموقع موجود في ملف website-snippet.html. ده الـ Secret اللي هتحطه فيه وفي مشروع Intake:'),
+    h('div', { class: 'mono' }, ADMIN.intakeSecret || '—'),
+    h('p', { class: 'hint', style: 'margin-top:12px' }, 'شيت الداتا (ليك إنت بس — متشاركهوش مع السيلز):'),
+    h('a', { href: ADMIN.spreadsheetUrl, target: '_blank', rel: 'noopener', class: 'btn' }, 'افتح شيت الداتا'));
+}
+
+/* ---------- drawer ---------- */
+function openLead(id, pendingStage) {
+  const l = id === 'new' ? null : LEADS.find(function (x) { return x.id === id; });
+  if (id !== 'new' && !l) return;
+  const head = h('div', { class: 'd-head' });
+  const live = h('div', { style: 'display:grid;gap:18px' });
+  const logHost = h('div', {}, h('span', { class: 'lbl' }, 'سجل النشاط'), h('p', { class: 'loading-row' }, 'بيحمّل...'));
+  const body = h('div', { class: 'd-body' }, live, leadForm(l), l ? activityBox(l) : null, l ? logHost : null, l && isAdmin() ? dangerZone(l) : null);
+  const panel = h('aside', { class: 'drawer', role: 'dialog', 'aria-modal': 'true', 'aria-label': l ? (l.name || 'ليد') : 'ليد جديد' }, head, body);
+  $('drawer-root').replaceChildren(h('div', { class: 'scrim', onclick: closeLead }), panel);
+  D = { id: id, head: head, live: live, logHost: logHost, pendingStage: pendingStage || null, acts: null };
+  refreshDrawer();
+  document.addEventListener('keydown', escClose);
+  if (l) api('api_getLead', id).then(function (r) { if (!D || D.id !== id) return; upsertLead(r.lead); D.acts = r.activities; refreshDrawer(); render(); })
+    .catch(function (e) { toast(errText(e), 'err'); });
+}
+function escClose(e) { if (e.key === 'Escape') closeLead(); }
+function closeLead() { D = null; $('drawer-root').replaceChildren(); document.removeEventListener('keydown', escClose); }
+function applyResult(r) { upsertLead(r.lead); if (D && D.id === r.lead.id) D.acts = r.activities; refreshDrawer(); render(); }
+function refreshDrawer() {
+  if (!D) return;
+  const close = h('button', { class: 'btn ghost', 'aria-label': 'اقفل', onclick: closeLead }, '✕');
+  if (D.id === 'new') { D.head.replaceChildren(h('h2', {}, 'ليد جديد'), close); return; }
+  const l = LEADS.find(function (x) { return x.id === D.id; });
+  if (!l) { closeLead(); return; }
+  D.head.replaceChildren(h('h2', {}, l.name || 'بدون اسم', h('div', { class: 'sub' }, [SRC[l.source], l.campaign, l.project, l.unit].filter(Boolean).join(' · '))), close);
+  const wa = waNum(l.phone);
+  const contact = l.phone ? h('div', { class: 'contact' }, h('span', { class: 'phone ltr num' }, l.phone),
+    wa ? h('a', { class: 'btn', href: 'https://wa.me/' + wa, target: '_blank', rel: 'noopener' }, 'واتساب') : null,
+    h('a', { class: 'btn', href: 'tel:' + l.phone }, 'اتصال'),
+    h('button', { class: 'btn', onclick: function () { (navigator.clipboard ? navigator.clipboard.writeText(l.phone) : Promise.reject()).then(function () { toast('الرقم اتنسخ'); }, function () { toast('حدد الرقم وانسخه'); }); } }, 'نسخ'),
+    l.email ? h('span', { class: 'meta ltr', style: 'user-select:all' }, l.email) : null) : null;
+  const stage = l.stage || 'new';
+  const stages = h('div', {}, h('span', { class: 'lbl' }, 'المرحلة'), h('div', { class: 'stages' }, C.stages.map(function (s) {
+    return h('button', { class: 'sbtn', 'aria-pressed': String(stage === s[0]), onclick: function () {
+      if (stage === s[0]) return;
+      if (s[0] === 'won' || s[0] === 'lost') { D.pendingStage = s[0]; refreshDrawer(); } else { D.pendingStage = null; changeStage(l.id, s[0]); }
+    } }, h('span', { class: 'dot st-' + s[0] }), s[1]);
+  })));
+  let sub = null;
+  if (D.pendingStage === 'won') {
+    const v = h('input', { type: 'number', id: 'won-val', placeholder: 'قيمة الصفقة', value: l.dealValue || '', style: 'flex:1 1 140px' });
+    const c = h('select', { id: 'won-cur' }, C.currencies.map(function (x) { return h('option', { value: x, selected: (l.currency || 'EGP') === x }, x); }));
+    const unitsList = ((PROJECTS.find(function (p) { return p.name === l.project; }) || {}).units || []);
+    const u = h('input', { type: 'text', id: 'won-unit', placeholder: 'الوحدة اللي اتباعت', value: l.unit || '', list: 'won-units', style: 'flex:1 1 140px' });
+    sub = h('div', { class: 'subform' }, v, c, u, h('datalist', { id: 'won-units' }, unitsList.map(function (x) { return h('option', { value: x }); })),
+      h('button', { class: 'btn primary', onclick: function () { D.pendingStage = null; changeStage(l.id, 'won', { dealValue: v.value, currency: c.value, unit: u.value.trim() }); } }, 'تأكيد البيع'),
+      h('button', { class: 'btn ghost', onclick: function () { D.pendingStage = null; refreshDrawer(); } }, 'إلغاء'));
+  }
+  if (D.pendingStage === 'lost') {
+    const s = h('select', { id: 'lost-r' }, C.lostReasons.map(function (x) { return h('option', { value: x }, x); }));
+    sub = h('div', { class: 'subform' }, h('span', {}, 'سبب الخسارة'), s,
+      h('button', { class: 'btn primary', onclick: function () { D.pendingStage = null; changeStage(l.id, 'lost', { lostReason: s.value }); } }, 'تأكيد'),
+      h('button', { class: 'btn ghost', onclick: function () { D.pendingStage = null; refreshDrawer(); } }, 'إلغاء'));
+  }
+  D.live.replaceChildren.apply(D.live, [contact, stages, sub].filter(Boolean));
+  if (D.acts) {
+    const A = C.actLabel;
+    D.logHost.replaceChildren(h('span', { class: 'lbl' }, 'سجل النشاط'), D.acts.length ? h('div', { class: 'log' }, D.acts.slice().reverse().map(function (a) {
+      let what = a.text || '';
+      if (a.type === 'stage') what = (SL[a.fromVal] || '') + ' ← ' + (SL[a.toVal] || '') + (a.text ? '\n' + a.text : '');
+      if (a.type === 'assign') what = (a.toVal ? 'لـ ' + nm(a.toVal) : 'اتشال المسؤول') + (a.text ? '\n' + a.text : '');
+      return h('div', { class: 'ev' + (a.type === 'stage' ? ' stage' : '') },
+        h('div', { class: 'who' }, (a.by === 'system' ? 'النظام' : nm(a.by)) + ' · ' + (a.at ? dtf.format(new Date(a.at)) : '')),
+        h('div', { class: 'what' }, h('span', { class: 'tag' }, A[a.type] || a.type), what));
+    })) : h('p', { class: 'meta' }, 'لسه مفيش نشاط.'));
+  }
+}
+function field(label, id, el, full) { return h('div', { class: 'field' + (full ? ' full' : '') }, h('label', { for: id }, label), el); }
+function leadForm(l) {
+  const isNew = !l;
+  const x = l || { source: 'manual', nextFollowUp: TODAY };
+  const name = h('input', { type: 'text', id: 'f-name', value: x.name || '' });
+  const phone = h('input', { type: 'tel', id: 'f-phone', value: x.phone || '', dir: 'ltr' });
+  const email = h('input', { type: 'email', id: 'f-email', value: x.email || '', dir: 'ltr' });
+  const source = h('select', { id: 'f-src' }, C.sources.map(function (s) { return h('option', { value: s[0], selected: x.source === s[0] }, s[1]); }));
+  const pnames = PROJECTS.map(function (p) { return p.name; }); if (x.project && pnames.indexOf(x.project) < 0) pnames.push(x.project);
+  const project = h('select', { id: 'f-proj' }, h('option', { value: '' }, '—'), pnames.map(function (p) { return h('option', { value: p, selected: x.project === p }, p); }));
+  const dl = h('datalist', { id: 'units-dl' });
+  const fillUnits = function () { dl.replaceChildren.apply(dl, ((PROJECTS.find(function (p) { return p.name === project.value; }) || {}).units || []).map(function (u) { return h('option', { value: u }); })); };
+  fillUnits(); project.addEventListener('change', fillUnits);
+  const unit = h('input', { type: 'text', id: 'f-unit', value: x.unit || '', list: 'units-dl', placeholder: 'كود الوحدة' });
+  const budget = h('input', { type: 'text', id: 'f-budget', value: x.budget || '', placeholder: 'مثلاً 3-4 مليون / كاش' });
+  let owner = null;
+  if (isMgr()) {
+    const opts = [];
+    if (isNew) opts.push(['auto', 'توزيع تلقائي']);
+    PEOPLE.forEach(function (p) { opts.push([p.email, nm(p.email)]); });
+    if (x.ownerEmail && !opts.some(function (o) { return o[0] === x.ownerEmail; })) opts.push([x.ownerEmail, nm(x.ownerEmail)]);
+    opts.push(['', 'بدون مسؤول']);
+    owner = h('select', { id: 'f-owner-sel' }, opts.map(function (o) { return h('option', { value: o[0] }, o[1]); }));
+    owner.value = isNew ? 'auto' : (x.ownerEmail || '');
+  }
+  const fu = h('input', { type: 'date', id: 'f-fu', value: x.nextFollowUp || '' });
+  const note = isNew ? h('textarea', { id: 'f-note', rows: 3, placeholder: 'أول تواصل، اهتماماته، أي تفاصيل' }) : null;
+  const warn = h('div', {});
+  const save = h('button', { class: 'btn primary' }, isNew ? 'إضافة الليد' : 'احفظ التعديلات');
+  let force = false;
+  save.addEventListener('click', async function () {
+    const d = { id: isNew ? null : l.id, name: name.value.trim(), phone: phone.value.trim(), email: email.value.trim(), source: source.value,
+      project: project.value, unit: unit.value.trim(), budget: budget.value.trim(), nextFollowUp: fu.value || '' };
+    if (!d.name && !d.phone) { toast('اكتب الاسم أو الموبايل على الأقل', 'err'); return; }
+    if (owner) d.ownerEmail = owner.value;
+    if (isNew) { d.note = note.value.trim(); d.force = force; }
+    save.disabled = true;
+    try {
+      const r = await api('api_saveLead', d);
+      if (r.duplicate) {
+        const dup = r.duplicate;
+        warn.replaceChildren(h('div', { class: 'warnbox' },
+          'الرقم ده متسجل قبل كده' + (dup.name ? ' باسم «' + dup.name + '»' : '') + ' مع ' + dup.ownerName + '.',
+          dup.id ? h('button', { class: 'btn', onclick: function () { openLead(dup.id); } }, 'افتحه') : null,
+          dup.canForce ? h('button', { class: 'btn', onclick: function () { force = true; save.click(); } }, 'ضيفه برضه') : null));
+        save.disabled = false; return;
+      }
+      applyResult(r);
+      toast(isNew ? 'الليد اتضاف' : 'اتحفظ');
+      if (isNew) openLead(r.lead.id); else save.disabled = false;
+    } catch (e) { toast(errText(e), 'err'); save.disabled = false; }
+  });
+  return h('div', {}, h('span', { class: 'lbl' }, isNew ? 'بيانات الليد' : 'البيانات'),
+    h('div', { class: 'form' },
+      field('الاسم', 'f-name', name), field('الموبايل', 'f-phone', phone), field('المصدر', 'f-src', source), field('الإيميل', 'f-email', email),
+      field('المشروع', 'f-proj', project), field('الوحدة', 'f-unit', h('div', {}, unit, dl)), field('الميزانية', 'f-budget', budget),
+      owner ? field('المسؤول', 'f-owner-sel', owner) : field('المسؤول', 'f-owner-ro', h('div', { id: 'f-owner-ro', style: 'padding:8px 0' }, isNew ? 'أنا' : nm(x.ownerEmail))),
+      field('ميعاد المتابعة الجاية', 'f-fu', fu), note ? field('ملاحظة', 'f-note', note, true) : null,
+      h('div', { class: 'full' }, warn), h('div', { class: 'full acts' }, save)));
+}
+function activityBox(l) {
+  const A = C.actLabel;
+  const type = h('select', { id: 'a-type' }, ['call', 'whatsapp', 'visit', 'meeting', 'note'].map(function (k) { return h('option', { value: k }, A[k]); }));
+  const text = h('textarea', { id: 'a-text', rows: 2, placeholder: 'حصل إيه؟ قال إيه؟' });
+  const next = h('input', { type: 'date', id: 'a-next' });
+  const quick = function (n, t) { return h('button', { class: 'btn ghost', onclick: function () { next.value = addDays(TODAY, n); } }, t); };
+  const btn = h('button', { class: 'btn primary' }, 'سجّل');
+  btn.addEventListener('click', async function () {
+    if (type.value === 'note' && !text.value.trim() && !next.value) { toast('اكتب حصل إيه أو حدد ميعاد متابعة', 'err'); return; }
+    btn.disabled = true;
+    try {
+      const r = await api('api_addActivity', l.id, { type: type.value, text: text.value.trim(), nextFollowUp: next.value });
+      text.value = ''; if (next.value) { const f = $('f-fu'); if (f) f.value = next.value; } next.value = '';
+      applyResult(r); toast('اتسجل');
+    } catch (e) { toast(errText(e), 'err'); }
+    btn.disabled = false;
+  });
+  return h('div', { class: 'addact' }, h('span', { class: 'lbl', style: 'margin:0' }, 'سجّل تواصل'),
+    h('div', { class: 'row' }, type), text,
+    h('div', { class: 'row' }, h('label', { for: 'a-next', class: 'meta' }, 'المتابعة الجاية'), next, quick(1, 'بكرة'), quick(3, 'بعد 3 أيام'), quick(7, 'بعد أسبوع')),
+    h('div', { class: 'acts' }, btn));
+}
+function dangerZone(l) {
+  const box = h('div', { class: 'danger-zone' });
+  const draw = function () {
+    box.replaceChildren(h('button', { class: 'btn danger', onclick: function () {
+      box.replaceChildren(h('span', {}, 'متأكد؟ المسح نهائي ومعاه سجل النشاط.'),
+        h('button', { class: 'btn danger', onclick: async function () {
+          try { await api('api_deleteLead', l.id); LEADS = LEADS.filter(function (x) { return x.id !== l.id; }); closeLead(); toast('اتمسح'); render(); }
+          catch (e) { toast(errText(e), 'err'); }
+        } }, 'امسح'),
+        h('button', { class: 'btn ghost', onclick: draw }, 'لأ'));
+    } }, 'امسح الليد'));
+  };
+  draw();
+  return box;
+}
+async function changeStage(id, k, extra) {
+  try { const r = await api('api_changeStage', id, k, extra || {}); applyResult(r); toast('اتنقل لـ «' + SL[k] + '»'); }
+  catch (e) { toast(errText(e), 'err'); }
+}
+
+/* ---------- refresh ---------- */
+let refreshing = false;
+async function refresh(manual) {
+  if (refreshing) return; refreshing = true;
+  try { const r = await api('api_listLeads'); LEADS = r.leads; TODAY = r.today || TODAY; if (!settingsDirty) render(); if (manual) toast('اتحدّث'); }
+  catch (e) { if (manual) toast(errText(e), 'err'); }
+  refreshing = false;
+}
+setInterval(function () { if (document.visibilityState === 'visible' && ME) refresh(false); }, 60000);
+document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && ME) refresh(false); });
+
+/* ---------- toolbar ---------- */
+$('q').addEventListener('input', function (e) { F.q = e.target.value; render(); });
+$('f-owner').addEventListener('change', function (e) { F.owner = e.target.value; render(); });
+$('f-source').addEventListener('change', function (e) { F.source = e.target.value; render(); });
+$('f-project').addEventListener('change', function (e) { F.project = e.target.value; render(); });
+$('add-btn').addEventListener('click', function () { openLead('new'); });
+$('refresh-btn').addEventListener('click', function () { refresh(true); });
+
+/* ---------- boot ---------- */
+api('api_bootstrap').then(function (b) {
+  ME = b.me; PEOPLE = b.people; PROJECTS = b.projects; LEADS = b.leads; C = b.consts; ADMIN = b.admin || null;
+  TODAY = C.today || localToday();
+  SL = Object.fromEntries(C.stages); SRC = Object.fromEntries(C.sources);
+  F.owner = isMgr() ? 'all' : 'me';
+  render();
+}).catch(function (e) {
+  $('view').replaceChildren(h('div', { class: 'err-page' }, h('h2', {}, 'مش قادر تدخل'), h('p', {}, errText(e))));
+});
+</script>
