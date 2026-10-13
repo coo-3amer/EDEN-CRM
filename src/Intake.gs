@@ -1,7 +1,7 @@
 /**
- * استقبال الليدز من برة:
- * - فورم الموقع → مشروع Intake الصغير (intake/) بيكتب في شيت Inbox
- * - الـ Trigger بيقرا Inbox كل 10 دقايق ويحوّل كل صف لليد
+ * Leads from outside:
+ * - Website form → the small Intake project (intake/) writes to the Inbox sheet
+ * - The trigger reads Inbox every 10 minutes and turns each row into a lead
  */
 function processInbox_() {
   const pending = rows_('Inbox').filter(function (r) { return !r.status; });
@@ -10,7 +10,7 @@ function processInbox_() {
       const p = JSON.parse(r.payload || '{}');
       const name = p.name || p.full_name || [p.first_name, p.last_name].filter(Boolean).join(' ');
       const phone = p.phone || p.phone_number || p.mobile || '';
-      if (!name && !phone) throw new Error('مفيش اسم ولا موبايل');
+      if (!name && !phone) throw new Error('No name or phone');
       const extras = Object.keys(p).filter(function (k) {
         return ['name', 'full_name', 'first_name', 'last_name', 'phone', 'phone_number', 'mobile', 'email', 'project', 'source', 'campaign', 'utm_campaign', 'message', 'secret'].indexOf(k) < 0 && p[k];
       }).map(function (k) { return k + ': ' + p[k]; });

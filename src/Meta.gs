@@ -1,7 +1,7 @@
 /**
- * سحب ليدز Meta Lead Ads من Graph API كل 10 دقايق.
- * محتاج: Page Access Token (فيه صلاحية leads_retrieval) + IDs الفورمات.
- * بنسحب (Polling) بدل Webhook لأن Apps Script مش بيرد على Webhooks بالشكل اللي Meta عايزاه.
+ * Pulls Meta Lead Ads leads from the Graph API every 10 minutes.
+ * Needs a Page Access Token with leads_retrieval + the form IDs.
+ * Polling instead of webhooks, because Apps Script cannot answer Meta's webhook handshake reliably.
  */
 function metaFormList_() {
   return String(settings_().META_FORM_IDS || '').split(/\n+/).map(function (line) {
@@ -15,7 +15,7 @@ function metaFormList_() {
 function metaFetch_(url) {
   const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
   let j = {};
-  try { j = JSON.parse(res.getContentText()); } catch (e) { throw new Error('رد Meta مش مفهوم (HTTP ' + res.getResponseCode() + ')'); }
+  try { j = JSON.parse(res.getContentText()); } catch (e) { throw new Error('Unreadable reply from Meta (HTTP ' + res.getResponseCode() + ')'); }
   if (j.error) throw new Error('Meta: ' + (j.error.message || JSON.stringify(j.error)));
   return j;
 }
@@ -34,7 +34,7 @@ function metaLeadToData_(x, project) {
     .map(function (k) { return k.replace(/_/g, ' ') + ': ' + f[k]; });
   return {
     name: name, phone: phone, email: f.email || '', source: 'meta', project: project || '',
-    campaign: x.campaign_name || x.ad_name || '', note: [x.ad_name ? 'إعلان: ' + x.ad_name : '', extras.join(' · ')].filter(Boolean).join('\n'),
+    campaign: x.campaign_name || x.ad_name || '', note: [x.ad_name ? 'Ad: ' + x.ad_name : '', extras.join(' · ')].filter(Boolean).join('\n'),
     externalId: 'meta:' + x.id,
   };
 }
@@ -46,7 +46,7 @@ function syncMetaLeads_() {
   const s = settings_();
   const ver = s.META_API_VERSION || 'v21.0';
   const props = PropertiesService.getScriptProperties();
-  // نرجع ساعة لورا كهامش أمان، والتكرار بيتمنع بالـ externalId
+  // look back one extra hour as a safety margin; duplicates are blocked by externalId
   const since = Number(props.getProperty('META_SINCE') || 0) || Math.floor(Date.now() / 1000) - 3 * 86400;
   const from = since - 3600;
   let maxTs = since, count = 0;
@@ -76,13 +76,13 @@ function syncMetaLeads_() {
 function testMeta_() {
   const token = secret_('META_PAGE_TOKEN');
   const forms = metaFormList_();
-  if (!token) return { ok: false, message: 'مفيش Page Access Token متسجل.' };
-  if (!forms.length) return { ok: false, message: 'مفيش Form IDs متسجلة.' };
+  if (!token) return { ok: false, message: 'No Page Access Token saved.' };
+  if (!forms.length) return { ok: false, message: 'No form IDs saved.' };
   const ver = settings_().META_API_VERSION || 'v21.0';
   const results = forms.map(function (f) {
     try {
       const j = metaFetch_('https://graph.facebook.com/' + ver + '/' + f.id + '?fields=name,status,leads_count&access_token=' + encodeURIComponent(token));
-      return '✓ ' + (j.name || f.id) + (j.leads_count != null ? ' (' + j.leads_count + ' ليد)' : '') + (f.project ? ' → ' + f.project : '');
+      return '✓ ' + (j.name || f.id) + (j.leads_count != null ? ' (' + j.leads_count + ' leads)' : '') + (f.project ? ' → ' + f.project : '');
     } catch (e) {
       return '✗ ' + f.id + ': ' + e.message;
     }

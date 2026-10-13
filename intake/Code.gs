@@ -1,10 +1,10 @@
 /**
  * EDEN CRM — Intake
- * مشروع صغير منفصل بيستقبل ليدز فورم الموقع (أو أي مصدر خارجي) ويكتبها في شيت Inbox.
- * لازم يتنشر Anyone (من غير تسجيل دخول) عشان الموقع يقدر يبعتله،
- * وده سبب إنه منفصل عن البرنامج الأساسي اللي متاح لحسابات الشركة بس.
+ * A small separate project that receives website form leads (or any outside source)
+ * and writes them to the Inbox sheet. It must be deployed for "Anyone" so the website
+ * can post to it — that is why it is separate from the main CRM, which is company-only.
  *
- * حط القيمتين دول من نتيجة setup() في المشروع الأساسي:
+ * Paste these two values from the setup() log of the main project:
  */
 const SPREADSHEET_ID = 'PUT_SPREADSHEET_ID_HERE';
 const INTAKE_SECRET = 'PUT_INTAKE_SECRET_HERE';
@@ -18,7 +18,7 @@ function doPost(e) {
   }
   if (!p || p.secret !== INTAKE_SECRET) return json_({ ok: false, error: 'unauthorized' });
   delete p.secret;
-  // تنظيف وحدود بسيطة ضد السبام
+  // basic cleanup and limits against spam
   const clean = {};
   Object.keys(p).slice(0, 30).forEach(function (k) {
     clean[String(k).slice(0, 40)] = String(p[k] == null ? '' : p[k]).slice(0, 1000);

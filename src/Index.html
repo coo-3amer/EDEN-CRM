@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="ar">
+<html dir="ltr" lang="en">
 <head>
   <base target="_top">
   <meta charset="utf-8">
@@ -7,7 +7,7 @@
   <title>EDEN CRM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@500;600;700&display=swap">
   <?!= include('Styles'); ?>
 </head>
 <body>
@@ -16,9 +16,9 @@
     <div class="top-in">
       <div class="brand-row">
         <div class="mark" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1.5c3 2.2 4.5 4.6 4.5 7.2A4.5 4.5 0 0 1 8 13.2a4.5 4.5 0 0 1-4.5-4.5C3.5 6.1 5 3.7 8 1.5Z" fill="var(--accent-fg)"/><path d="M8 14.5V7" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/></svg></div>
-        <div class="brand">EDEN CRM <small>ليدز ومبيعات</small></div>
+        <div class="brand">EDEN CRM <small>Leads &amp; sales</small></div>
         <div class="spacer"></div>
-        <button class="btn ghost icon" id="refresh-btn" title="تحديث" aria-label="تحديث"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+        <button class="btn ghost icon" id="refresh-btn" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
         <div class="me" id="me"></div>
       </div>
       <nav class="tabs" role="tablist" id="tabs"></nav>
@@ -27,14 +27,15 @@
   <div class="bar" id="bar" hidden>
     <div class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input type="search" id="q" placeholder="دوّر بالاسم أو الموبايل أو الوحدة" autocomplete="off">
+      <input type="search" id="q" placeholder="Search name, phone, unit or tag" autocomplete="off" dir="auto">
     </div>
-    <select id="f-owner" aria-label="المسؤول"></select>
-    <select id="f-source" aria-label="المصدر"></select>
-    <select id="f-project" aria-label="المشروع"></select>
-    <button class="btn primary" id="add-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>ليد جديد</button>
+    <select id="f-owner" aria-label="Owner"></select>
+    <select id="f-source" aria-label="Source"></select>
+    <select id="f-project" aria-label="Project"></select>
+    <select id="f-rating" aria-label="Rating"></select>
+    <button class="btn primary" id="add-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>New lead</button>
   </div>
-  <main id="view"><div class="skeleton">بيحمّل EDEN CRM...</div></main>
+  <main id="view"><div class="skeleton">Loading EDEN CRM…</div></main>
 </div>
 <div id="drawer-root"></div>
 <div id="toast-root"></div>

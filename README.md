@@ -1,136 +1,73 @@
 # EDEN CRM
 
-نظام متابعة الليدز والمبيعات لـ EDEN، مبني على Google Apps Script وGoogle Sheets.
+Lead and sales CRM for EDEN Developments, built on Google Apps Script with a Google Sheet as the database.
 
-## فيه إيه
+> Step-by-step setup in Egyptian Arabic: **SETUP-AR.md**
 
-- **Pipeline** بمراحل الليد (جديد ← تم التواصل ← مهتم ← معاينة ← تفاوض ← تم البيع / خسارة)، مع سحب وإفلات.
-- **صلاحيات حقيقية:**
-  - السيلز بيشوف ليدزه بس، والسيرفر هو اللي بيفلتر.
-  - المدير بيشوف الكل ويوزّع.
-  - الأدمن بيتحكم في الفريق والإعدادات.
-  - شيت الداتا مش متشارك مع حد.
-- **توزيع تلقائي:** كل ليد جديد بيروح للسيلز اللي عنده أقل ليدز مفتوحة.
-- **Meta Lead Ads:** الليدز بتتسحب أوتوماتيك كل 10 دقايق وتتوزع.
-- **فورم الموقع:** الليدز بتوصل أوتوماتيك عن طريق مشروع Intake.
-- **منع التكرار:** لو العميل رجع تاني، بيتسجل على الليد القديم وصاحبه بيتبلغ.
-- **الأتمتة:**
-  - تنبيه لو ليد جديد عدّى وقت الرد (افتراضي ساعتين).
-  - نقل الليد لزميل لو فضل من غير تواصل (افتراضي 24 ساعة).
-  - إيميل صباحي لكل سيلز بمتابعاته، وملخص يومي للمديرين.
-  - إيميل للمديرين مع كل بيعة.
-- **سجل نشاط** لكل ليد: مكالمات، واتساب، معاينات، تغيير مرحلة، إسناد.
-- **تقارير:** المراحل، المصادر، المشاريع، أسباب الخسارة، أداء كل سيلز ومتوسط وقت أول رد.
-- **استيراد CSV** وتوزيع جماعي للمديرين.
+## What it does
 
-## الملفات
+**Leads and pipeline**
+- Pipeline board with drag and drop (New → Contacted → Qualified → Site visit → Negotiation → Won / Lost)
+- Lead rating (Hot / Warm / Cold), tags, search, filters, sorting
+- Full activity history per lead: calls, WhatsApp, visits, meetings, notes, stage changes, assignments, unit reservations
+- Duplicate protection: a returning number is logged on the existing lead and its agent is told
+
+**Team and permissions** (enforced on the server)
+- Sales see only their own leads and tasks
+- Managers see everything, assign (one by one or in bulk), import leads, manage inventory and templates
+- Admin manages the team, automations, Meta and website settings
+- The data sheet is never shared with sales
+
+**Lead sources**
+- Manual entry, CSV import
+- Meta Lead Ads pulled every 10 minutes
+- Website form through the separate Intake project
+- Auto-assignment to the agent with the fewest open leads
+
+**Unit inventory and reservations**
+- Units per project with type, floor, area, price, currency, status (Available / Reserved / Sold / Blocked)
+- Reserve a unit for a client for N days; double booking is blocked
+- Expired reservations free the unit automatically and email the agent and managers
+- Marking a lead Won sells its unit and uses the unit price as the deal value
+- Marking a lead Lost releases its unit
+- Bulk import from Excel / CSV, export to Excel
+
+**Tasks and calendar**
+- Tasks with date and time: call, WhatsApp, site visit, meeting, to-do
+- Site visits and meetings go on the shared "EDEN CRM — Visits & Meetings" Google Calendar with the agent invited
+- Email reminder before each task is due
+- Completing a call / visit task logs it as contact on the lead
+- A Today view: overdue and today's tasks, uncontacted new leads, overdue follow-ups
+
+**WhatsApp**
+- One-click templates with placeholders ({name}, {agent}, {project}, {unit}, {price}, {visit})
+- Opening a template pre-fills the activity log
+
+**Automations**
+- First-contact alert (default 2 h) and automatic reassignment (default 24 h)
+- Morning email for every agent with their day, and a summary for managers with yesterday's activity
+- Email to managers on every sale and every new reservation
+
+**Reports and export**
+- Leads by stage, source, rating, project, lost reasons; team performance and average first response
+- Daily activity report per agent (calls, WhatsApp, visits, meetings, tasks done, sales) for today, yesterday, 7 / 30 days, this month
+- Export leads, inventory and activity to Excel (CSV) or copy straight into Excel
+
+## Files
 
 ```
-src/        البرنامج الأساسي (متاح لحسابات @edenalkhalij.com بس)
-intake/     مشروع صغير بيستقبل فورم الموقع (متاح للكل)
-website-snippet.html   كود الفورم اللي هيتحط في الموقع
+src/                    the CRM (company accounts only)
+intake/                 small project that receives the website form (public)
+website-snippet.html    form code for the website
 ```
 
----
+## Updating from v1
+1. `npx clasp push -f`
+2. Run `setup()` once from the editor and approve the new Calendar permission. It adds the new sheets (Units, Tasks) and columns, and moves any unit codes typed into Projects into the inventory.
+3. Deploy → Manage deployments → Edit → New version → Deploy.
 
-## التنصيب خطوة بخطوة (Windows)
-
-### 1) نزّل الملفات
-فك الضغط مثلًا في `D:\eden-crm`، وافتح Terminal جوه الفولدر.
-
-### 2) اعمل مشروع Apps Script للبرنامج
-1. افتح https://script.google.com بحساب `coo@edenalkhalij.com` ← **New project** ← سمّيه `EDEN CRM`.
-2. من **Project Settings** (الترس) انسخ الـ **Script ID**.
-3. في `D:\eden-crm` انسخ `.clasp.json.example` لملف اسمه `.clasp.json`، وحط الـ Script ID فيه.
-
-### 3) ارفع الكود
-```
-npx clasp push -f
-```
-لو سألك يكتب فوق `appsscript.json` قول **Yes**.
-
-### 4) شغّل setup مرة واحدة
-1. افتح المشروع بالأمر `npx clasp open`، أو من script.google.com.
-2. افتح ملف `Setup.gs` واختار الدالة `setup` من فوق، ودوس **Run**.
-3. وافق على الصلاحيات (Sheets، الإيميل، الاتصال الخارجي، الـ Triggers).
-4. من **Execution log** هتلاقي:
-   - لينك شيت الداتا
-   - `SPREADSHEET_ID`
-   - `INTAKE_SECRET`
-
-   احتفظ بيهم.
-
-> `setup()` بتعمل شيت الداتا، وتضيفك أدمن، وتركّب الأتمتة. لو شغلتها تاني مش هتمسح حاجة.
-
-### 5) انشر البرنامج
-```
-npx clasp deploy --description "v1"
-```
-بعدها من script.google.com: **Deploy ← Manage deployments**، وانسخ لينك الـ **Web app**. ده لينك البرنامج.
-
-الإعدادات مظبوطة في الكود:
-- **Execute as:** Me
-- **Who has access:** Anyone within edenalkhalij.com
-
-### 6) ضيف الفريق
-1. افتح لينك البرنامج ← **الإعدادات** ← **الفريق والصلاحيات**.
-2. ضيف كل واحد بإيميل الشركة، واختار دوره:
-   - **سيلز:** يشوف ليدزه بس.
-   - **مدير:** يشوف الكل ويوزّع.
-   - **أدمن:** يتحكم في كل حاجة.
-3. علّم **بيستقبل ليدز** للي داخلين في التوزيع التلقائي.
-4. ضيف المشاريع وأكواد الوحدات من **المشاريع والوحدات**.
-5. ابعت لينك البرنامج للفريق، وكل واحد يفتحه بحساب الشركة بتاعه.
-
-**متشاركش شيت الداتا مع حد.** ده اللي بيضمن إن السيلز ميشوفوش ليدز بعض.
-
-### 7) فورم الموقع (Intake)
-1. اعمل مشروع Apps Script جديد اسمه `EDEN CRM Intake`، وانسخ الـ Script ID بتاعه.
-2. في `D:\eden-crm\intake` انسخ `.clasp.json.example` لـ `.clasp.json`، وحط الـ ID.
-3. افتح `intake\Code.gs`، وحط `SPREADSHEET_ID` و`INTAKE_SECRET` من الخطوة 4.
-4. ارفع وانشر:
-   ```
-   cd intake
-   npx clasp push -f
-   npx clasp deploy --description "v1"
-   ```
-5. افتح المشروع مرة، وشغّل `doGet` من المحرر عشان توافق على الصلاحيات.
-6. انسخ لينك الـ Web app.
-7. في `website-snippet.html` حط اللينك والـ Secret، وادّي الكود للي ماسك الموقع.
-
-### 8) Meta Lead Ads
-1. محتاج **Page Access Token** للصفحة، فيه صلاحية `leads_retrieval`.
-   - الأحسن تعمل **System User** من Meta Business Settings، وتطلّع منه Token مايخلصش.
-   - لازم يبقى Admin على الصفحة.
-2. لكل فورم إعلانات (Instant Form) هات الـ **Form ID** من Meta Business Suite ← Instant Forms.
-3. في البرنامج: **الإعدادات** ← **Meta Lead Ads**.
-4. حط الـ Token، والفورمات بالشكل ده (كل فورم في سطر):
-   ```
-   1234567890123456:Eden Walk
-   6543210987654321:مشروع جورجيا
-   ```
-5. دوس **اختبر الاتصال**. لو كله ✓، البرنامج هيسحب كل 10 دقايق لوحده.
-
-> أول سحب بيجيب ليدز آخر 3 أيام بس، عشان الليدز القديمة متتوزعش كلها مرة واحدة. لو عايز القديم كله، نزّله CSV من Meta واستورده من الإعدادات.
-
----
-
-## التحديثات بعد كده
-```
-cd D:\eden-crm
-npx clasp push -f
-```
-بعدها من **Deploy ← Manage deployments ← Edit ← Version: New version ← Deploy**، عشان اللينك يفضل زي ما هو.
-
-لو التحديث فيه أعمدة جديدة، شغّل `setup()` تاني.
-
-## لو حاجة مش شغالة
-- **«حسابك مش متضاف»:** الأدمن يضيف الإيميل من الإعدادات، ويعلّم «نشط».
-- **الأتمتة:** في الإعدادات تحت «الأتمتة والتنبيهات» هتلاقي آخر تشغيل وأي رسالة خطأ.
-- **Meta:** دوس «اختبر الاتصال» وهيقولك المشكلة بالظبط، غالبًا Token انتهى أو مفيهوش صلاحية.
-- **عايز توقف الأتمتة:** شغّل `removeTriggers()`، وترجعها بـ `setup()`.
-
-## حدود لازم تعرفها
-- **السرعة:** Google Sheets كويس لحد عشرات الآلاف من الليدز. بعد كده الأحسن ننقل الداتا لقاعدة بيانات.
-- **الإيميلات:** MailApp بيبعت حوالي 1500 إيميل في اليوم لحسابات Workspace.
-- **Meta:** الليدز بتوصل خلال 10 دقايق مش في نفس اللحظة، لأن Apps Script مش بيستقبل Webhooks من Meta بشكل موثوق.
+## Limits
+- Google Sheets is comfortable up to tens of thousands of leads.
+- MailApp sends about 1,500 emails a day on Workspace.
+- Meta leads arrive within 10 minutes, not instantly (polling, not webhooks).
+- Excel export is a UTF-8 CSV, which Excel opens with Arabic names intact.

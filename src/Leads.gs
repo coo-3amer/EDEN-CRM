@@ -1,10 +1,16 @@
 /**
- * منطق الليدز: إضافة، توزيع، مراحل، نشاط.
- * كل الدوال هنا داخلية (مش متاحة للمتصفح) — المتصفح بيكلم Api.gs بس.
+ * Lead logic: create, assign, stages, activity.
+ * Internal only — the browser talks to Api.gs.
  */
 
 function leadById_(id) {
   return rows_('Leads').find(function (l) { return l.id === id; }) || null;
+}
+
+function leadMap_() {
+  const m = {};
+  rows_('Leads').forEach(function (l) { m[l.id] = l; });
+  return m;
 }
 
 function activitiesFor_(leadId) {
@@ -21,8 +27,8 @@ function logAct_(leadId, by, type, text, fromVal, toVal) {
 }
 
 /**
- * التوزيع التلقائي: السيلز النشط اللي بيستقبل ليدز وعنده أقل عدد ليدز مفتوحة.
- * عند التعادل: اللي استلم آخر ليد من بدري.
+ * Auto-assignment: the active agent who receives leads and has the fewest open leads.
+ * Tie-break: whoever received a lead longest ago.
  */
 function nextAssignee_(exclude) {
   exclude = (exclude || []).map(function (e) { return String(e || '').toLowerCase(); });
@@ -42,10 +48,10 @@ function nextAssignee_(exclude) {
 }
 
 /**
- * إضافة ليد.
- * opts.system = true  → جاي من Meta/الموقع/الاستيراد: لو مكرر بنسجّل على الليد القديم وننبّه صاحبه.
- * opts.force  = true  → أضيفه حتى لو الرقم مكرر.
- * بيرجّع {lead} أو {duplicate} أو {skipped}
+ * Create a lead.
+ * opts.system = true → from Meta / website / import: a duplicate is logged on the existing lead and its owner is told.
+ * opts.force  = true → add even if the phone number already exists.
+ * Returns {lead} or {duplicate} or {skipped}
  */
 function createLead_(d, actor, opts) {
   opts = opts || {};
@@ -56,8 +62,8 @@ function createLead_(d, actor, opts) {
   const dup = key ? all.find(function (l) { return l.phoneKey === key; }) : null;
   if (dup && !opts.force) {
     if (opts.system) {
-      const msg = 'العميل رجع تاني من ' + srcLabel_(d.source) + (d.campaign ? ' · ' + d.campaign : '') +
-        (d.project && d.project !== dup.project ? ' · مهتم بـ ' + d.project : '') + (d.note ? '\n' + d.note : '');
+      const msg = 'Client came back via ' + srcLabel_(d.source) + (d.campaign ? ' · ' + d.campaign : '') +
+        (d.project && d.project !== dup.project ? ' · interested in ' + d.project : '') + (d.note ? '\n' + d.note : '');
       logAct_(dup.id, 'system', 'system', msg);
       const patch = { updatedAt: nowIso_() };
       if (isOpen_(dup.stage)) patch.nextFollowUp = today_();
@@ -81,10 +87,11 @@ function createLead_(d, actor, opts) {
     nextFollowUp: d.nextFollowUp || today_(), firstContactAt: '', lastContactAt: '', stageAt: now,
     dealValue: '', currency: '', lostReason: '', note: d.note || '', createdBy: actor || 'system',
     slaAlertedAt: '', reassignCount: '0', externalId: d.externalId || '',
+    rating: RATING_LABEL[d.rating] ? d.rating : '', tags: tagsNorm_(d.tags),
   };
   const saved = insert_('Leads', lead);
   logAct_(lead.id, actor || 'system', 'created',
-    (d.note ? d.note : '') + (opts.system ? (d.note ? '\n' : '') + 'المصدر: ' + srcLabel_(lead.source) + (lead.campaign ? ' · ' + lead.campaign : '') : ''));
+    (d.note ? d.note : '') + (opts.system ? (d.note ? '\n' : '') + 'Source: ' + srcLabel_(lead.source) + (lead.campaign ? ' · ' + lead.campaign : '') : ''));
   if (owner && owner !== actor) {
     logAct_(lead.id, actor || 'system', 'assign', '', '', owner);
     notifyNewLead_(saved);
@@ -93,12 +100,14 @@ function createLead_(d, actor, opts) {
   return { lead: saved };
 }
 
-const EDITABLE_FIELDS_ = ['name', 'phone', 'email', 'source', 'campaign', 'project', 'unit', 'budget', 'nextFollowUp', 'note'];
+const EDITABLE_FIELDS_ = ['name', 'phone', 'email', 'source', 'campaign', 'project', 'unit', 'budget', 'nextFollowUp', 'note', 'rating', 'tags'];
 
 function updateLeadFields_(lead, d, actor, canReassign) {
   const patch = { updatedAt: nowIso_() };
   EDITABLE_FIELDS_.forEach(function (f) { if (d[f] !== undefined) patch[f] = String(d[f] == null ? '' : d[f]).trim(); });
   if (patch.phone !== undefined) patch.phoneKey = phoneKey_(patch.phone);
+  if (patch.rating !== undefined && !RATING_LABEL[patch.rating]) patch.rating = '';
+  if (patch.tags !== undefined) patch.tags = tagsNorm_(patch.tags);
   let reassignedTo = null;
   if (canReassign && d.ownerEmail !== undefined) {
     let to = String(d.ownerEmail || '').toLowerCase();
@@ -108,23 +117,35 @@ function updateLeadFields_(lead, d, actor, canReassign) {
       reassignedTo = to;
     }
   }
+  if (patch.rating !== undefined && patch.rating !== (lead.rating || '')) {
+    logAct_(lead.id, actor, 'system', 'Rating: ' + (RATING_LABEL[patch.rating] || 'none'));
+  }
   const updated = update_('Leads', lead, patch);
   if (reassignedTo !== null) {
     logAct_(lead.id, actor, 'assign', '', lead.ownerEmail, reassignedTo);
+    // open tasks follow the lead to its new owner
+    rows_('Tasks').filter(function (t) { return t.leadId === lead.id && t.status === 'open' && t.ownerEmail === lead.ownerEmail; })
+      .forEach(function (t) { reassignTask_(t, reassignedTo, updated); });
     if (reassignedTo && reassignedTo !== actor) notifyNewLead_(updated);
   }
   return updated;
 }
 
 function changeStage_(lead, stage, extra, actor) {
-  if (!STAGE_LABEL[stage]) throw new Error('مرحلة مش معروفة');
+  if (!STAGE_LABEL[stage]) throw new Error('Unknown stage.');
   extra = extra || {};
   const now = nowIso_();
   const patch = { stage: stage, stageAt: now, updatedAt: now };
+  let unit = null;
   if (stage === 'won') {
-    patch.dealValue = extra.dealValue != null && extra.dealValue !== '' ? String(Number(extra.dealValue) || '') : lead.dealValue;
-    patch.currency = extra.currency || lead.currency || 'EGP';
-    if (extra.unit) patch.unit = extra.unit;
+    const code = String(extra.unit || lead.unit || '').trim();
+    unit = code ? unitByCode_(code) : null;
+    if (unit) assertUnitSellable_(unit, lead.id);
+    if (code) patch.unit = unit ? unit.code : code;
+    if (unit && unit.project) patch.project = unit.project;
+    patch.dealValue = extra.dealValue != null && extra.dealValue !== '' ? String(Number(extra.dealValue) || '') :
+      (lead.dealValue || (unit && unit.price) || '');
+    patch.currency = extra.currency || lead.currency || (unit && unit.currency) || 'EGP';
     patch.lostReason = '';
   }
   if (stage === 'lost') patch.lostReason = extra.lostReason || lead.lostReason || '';
@@ -132,18 +153,26 @@ function changeStage_(lead, stage, extra, actor) {
   if (stage !== 'new' && !lead.firstContactAt) patch.firstContactAt = now;
   const updated = update_('Leads', lead, patch);
   let text = '';
-  if (stage === 'won') text = (patch.dealValue ? 'قيمة الصفقة ' + patch.dealValue + ' ' + patch.currency : '') + (patch.unit ? ' · وحدة ' + patch.unit : '');
-  if (stage === 'lost') text = patch.lostReason ? 'السبب: ' + patch.lostReason : '';
+  if (stage === 'won') text = [patch.dealValue ? 'Deal value ' + money_(patch.dealValue, patch.currency) : '', patch.unit ? 'Unit ' + patch.unit : ''].filter(String).join(' · ');
+  if (stage === 'lost') text = patch.lostReason ? 'Reason: ' + patch.lostReason : '';
   if (extra.note) text = (text ? text + '\n' : '') + extra.note;
   logAct_(lead.id, actor, 'stage', text, lead.stage || 'new', stage);
-  if (stage === 'won') notifyWon_(updated, actor);
+  if (stage === 'won' && unit) sellUnit_(unit, updated, actor);
+  if (stage === 'lost') {
+    releaseUnitsForLead_(lead.id, actor, 'lead marked lost');
+    cancelOpenTasksForLead_(lead.id, actor);
+  }
+  if (stage === 'won') {
+    cancelOpenTasksForLead_(lead.id, actor, ['call', 'whatsapp', 'todo']);
+    notifyWon_(updated, actor);
+  }
   return updated;
 }
 
 function addActivity_(lead, a, actor) {
-  const type = ACT_LABEL[a.type] && ['call', 'whatsapp', 'visit', 'meeting', 'note'].indexOf(a.type) >= 0 ? a.type : 'note';
+  const type = ['call', 'whatsapp', 'visit', 'meeting', 'note'].indexOf(a.type) >= 0 ? a.type : 'note';
   const text = String(a.text || '').trim();
-  if (type === 'note' && !text && !a.nextFollowUp) throw new Error('اكتب حصل إيه أو حدد ميعاد المتابعة.');
+  if (type === 'note' && !text && !a.nextFollowUp) throw new Error('Write what happened or pick the next follow-up date.');
   const now = nowIso_();
   if (text || type !== 'note') logAct_(lead.id, actor, type, text);
   const patch = { updatedAt: now };
@@ -158,7 +187,7 @@ function addActivity_(lead, a, actor) {
   return updated;
 }
 
-/** الحقول اللي بتتبعت للمتصفح */
+/** Fields sent to the browser */
 function publicLead_(l) {
   const c = clean_(l);
   delete c.phoneKey; delete c.slaAlertedAt;

@@ -1,6 +1,6 @@
 /**
- * الدوال اللي المتصفح بيناديها بـ google.script.run
- * كل دالة بتبدأ بالتعرف على المستخدم (me_) وبتطبق الصلاحيات قبل أي حاجة.
+ * Functions the browser calls through google.script.run.
+ * Every one starts by identifying the user (me_) and applying permissions.
  */
 
 function doGet() {
@@ -18,79 +18,96 @@ function visibleLeads_(u) {
   return rows_('Leads').filter(function (l) { return canSee_(u, l); }).map(publicLead_);
 }
 
+function syncData_(u) {
+  return { leads: visibleLeads_(u), tasks: publicTasks_(u), units: publicUnits_(u), today: today_() };
+}
+
+function projects_() {
+  return rows_('Projects').filter(function (p) { return p.name && (p.active === '' || truthy_(p.active)); })
+    .map(function (p) { return { name: p.name, country: p.country }; });
+}
+
 function api_bootstrap() {
   const u = me_();
   if (isAdmin_(u) && !settings_().APP_URL) {
     try { const url = ScriptApp.getService().getUrl(); if (url) setSetting_('APP_URL', url); } catch (e) { /* ignore */ }
   }
-  const people = activeUsers_().map(function (x) {
-    return { email: x.email, name: x.name || x.email, role: x.role, receivesLeads: truthy_(x.receivesLeads) };
-  });
-  const out = {
+  const s = settings_();
+  const out = Object.assign(syncData_(u), {
     me: u,
-    people: people,
-    projects: rows_('Projects').filter(function (p) { return p.active === '' || truthy_(p.active); }).map(function (p) {
-      return { name: p.name, country: p.country, units: String(p.units || '').split(/[\n,،]+/).map(function (s) { return s.trim(); }).filter(String) };
-    }),
-    leads: visibleLeads_(u),
-    consts: { stages: STAGES, sources: SOURCES, lostReasons: LOST_REASONS, currencies: CURRENCIES, actLabel: ACT_LABEL, today: today_() },
-  };
-  if (isAdmin_(u)) out.admin = api_adminData_();
+    people: activeUsers_().map(function (x) { return { email: x.email, name: x.name || x.email, role: x.role, receivesLeads: truthy_(x.receivesLeads) }; }),
+    projects: projects_(),
+    templates: templates_(),
+    cfg: { reservationDays: Number(s.RESERVATION_DAYS) || 7, allowExport: isManager_(u) || truthy_(s.ALLOW_SALES_EXPORT) },
+    consts: {
+      stages: STAGES, sources: SOURCES, ratings: RATINGS, unitStatuses: UNIT_STATUSES, taskTypes: TASK_TYPES,
+      lostReasons: LOST_REASONS, currencies: CURRENCIES, actLabel: ACT_LABEL,
+    },
+  });
+  if (isAdmin_(u)) out.admin = adminData_();
   return out;
 }
 
-function api_listLeads() {
-  const u = me_();
-  return { leads: visibleLeads_(u), today: today_() };
+/** Refresh everything the current user can see */
+function api_sync() {
+  return syncData_(me_());
+}
+
+function visibleLead_(u, id) {
+  const l = leadById_(id);
+  if (!canSee_(u, l)) throw new Error('This lead does not exist or is not one of yours.');
+  return l;
 }
 
 function api_getLead(id) {
   const u = me_();
-  const l = leadById_(id);
-  if (!l || !canSee_(u, l)) throw new Error('الليد ده مش موجود أو مش من ليدزك.');
-  return { lead: publicLead_(l), activities: activitiesFor_(id).map(function (a) {
-    return Object.assign(a, { byName: displayName_(a.by), toName: a.toVal && a.type === 'assign' ? displayName_(a.toVal) : '' });
-  }) };
+  const l = visibleLead_(u, id);
+  return {
+    lead: publicLead_(l),
+    activities: activitiesFor_(id),
+    tasks: publicTasks_(u).filter(function (t) { return t.leadId === id; }),
+  };
+}
+
+/** A lead change can touch units and tasks too, so return the full refreshed state */
+function leadResult_(u, id) {
+  return Object.assign(syncData_(u), { detail: api_getLead(id) });
 }
 
 function api_saveLead(d) {
   const u = me_();
   return withLock_(function () {
     if (!d.id) {
-      if (!String(d.name || '').trim() && !String(d.phone || '').trim()) throw new Error('اكتب الاسم أو الموبايل على الأقل.');
+      if (!String(d.name || '').trim() && !String(d.phone || '').trim()) throw new Error('Enter at least a name or a phone number.');
       const data = Object.assign({}, d);
-      if (!isManager_(u)) data.ownerEmail = u.email; // السيلز بيضيف لنفسه
-      const r = createLead_(data, u.email, { force: !!d.force });
+      if (!isManager_(u)) data.ownerEmail = u.email; // agents add leads for themselves
+      const r = createLead_(data, u.email, { force: !!d.force && isManager_(u) });
       if (r.duplicate) {
-        const dup = r.duplicate;
-        return { duplicate: { id: canSee_(u, dup) ? dup.id : null, name: canSee_(u, dup) ? dup.name : '', ownerName: displayName_(dup.ownerEmail), canForce: isManager_(u) } };
+        const dup = r.duplicate, vis = canSee_(u, dup);
+        return { duplicate: { id: vis ? dup.id : null, name: vis ? dup.name : '', ownerName: displayName_(dup.ownerEmail), canForce: isManager_(u) } };
       }
-      return api_getLead(r.lead.id);
+      return leadResult_(u, r.lead.id);
     }
-    const lead = leadById_(d.id);
-    if (!lead || !canSee_(u, lead)) throw new Error('الليد ده مش موجود أو مش من ليدزك.');
+    const lead = visibleLead_(u, d.id);
     updateLeadFields_(lead, d, u.email, isManager_(u));
-    return api_getLead(d.id);
+    return leadResult_(u, d.id);
   });
 }
 
 function api_changeStage(id, stage, extra) {
   const u = me_();
   return withLock_(function () {
-    const lead = leadById_(id);
-    if (!lead || !canSee_(u, lead)) throw new Error('الليد ده مش موجود أو مش من ليدزك.');
+    const lead = visibleLead_(u, id);
     if ((lead.stage || 'new') !== stage) changeStage_(lead, stage, extra || {}, u.email);
-    return api_getLead(id);
+    return leadResult_(u, id);
   });
 }
 
 function api_addActivity(id, a) {
   const u = me_();
   return withLock_(function () {
-    const lead = leadById_(id);
-    if (!lead || !canSee_(u, lead)) throw new Error('الليد ده مش موجود أو مش من ليدزك.');
-    addActivity_(lead, a || {}, u.email);
-    return api_getLead(id);
+    addActivity_(visibleLead_(u, id), a || {}, u.email);
+    return leadResult_(u, id);
   });
 }
 
@@ -99,16 +116,19 @@ function api_deleteLead(id) {
   requireAdmin_(u);
   return withLock_(function () {
     const lead = leadById_(id);
-    if (!lead) return { ok: true };
-    const acts = rows_('Activities').filter(function (a) { return a.leadId === id; }).sort(function (a, b) { return b._row - a._row; });
-    acts.forEach(function (a) { sh_('Activities').deleteRow(a._row); });
-    clearCache_('Activities');
-    deleteRow_('Leads', lead);
-    return { ok: true };
+    if (lead) {
+      releaseUnitsForLead_(id, u.email, 'lead deleted');
+      rows_('Units').filter(function (x) { return x.leadId === id; }).forEach(function (x) { update_('Units', x, { leadId: '' }); });
+      const tasks = rows_('Tasks').filter(function (t) { return t.leadId === id; });
+      tasks.forEach(deleteTaskEvent_);
+      deleteRows_('Tasks', tasks);
+      deleteRows_('Activities', rows_('Activities').filter(function (a) { return a.leadId === id; }));
+      deleteRow_('Leads', leadById_(id));
+    }
+    return syncData_(u);
   });
 }
 
-/** توزيع مجموعة ليدز مرة واحدة (للمديرين) */
 function api_bulkAssign(ids, ownerEmail) {
   const u = me_();
   requireManager_(u);
@@ -117,11 +137,98 @@ function api_bulkAssign(ids, ownerEmail) {
       const lead = leadById_(id);
       if (lead) updateLeadFields_(lead, { ownerEmail: ownerEmail }, u.email, true);
     });
-    return { leads: visibleLeads_(u) };
+    return syncData_(u);
   });
 }
 
-/* ---------- استيراد ---------- */
+/* ---------- tasks ---------- */
+function api_saveTask(d) {
+  const u = me_();
+  return withLock_(function () {
+    if (d.id) {
+      const t = taskById_(d.id);
+      if (!t || !(isManager_(u) || t.ownerEmail === u.email)) throw new Error('Task not found.');
+      updateTask_(t, d, u.email, isManager_(u));
+      return leadResult_(u, t.leadId);
+    }
+    const lead = visibleLead_(u, d.leadId);
+    createTask_(lead, d, u.email, isManager_(u));
+    return leadResult_(u, lead.id);
+  });
+}
+
+function myTask_(u, id) {
+  const t = taskById_(id);
+  if (!t || !(isManager_(u) || t.ownerEmail === u.email)) throw new Error('Task not found.');
+  return t;
+}
+
+function api_completeTask(id, outcome) {
+  const u = me_();
+  return withLock_(function () {
+    const t = myTask_(u, id);
+    completeTask_(t, outcome, u.email);
+    return leadResult_(u, t.leadId);
+  });
+}
+
+function api_cancelTask(id) {
+  const u = me_();
+  return withLock_(function () {
+    const t = myTask_(u, id);
+    cancelTask_(t, u.email);
+    return leadResult_(u, t.leadId);
+  });
+}
+
+/* ---------- units ---------- */
+function api_reserveUnit(leadId, code, days, note) {
+  const u = me_();
+  return withLock_(function () {
+    const lead = visibleLead_(u, leadId);
+    if (!isOpen_(lead.stage)) throw new Error('Only open leads can reserve a unit.');
+    reserveUnit_(lead, code, days, u.email, note);
+    return leadResult_(u, leadId);
+  });
+}
+
+function api_releaseUnit(code, reason) {
+  const u = me_();
+  return withLock_(function () {
+    const unit = unitByCode_(code);
+    if (!unit || unit.status !== 'reserved') throw new Error('This unit is not reserved.');
+    const lead = unit.leadId ? leadById_(unit.leadId) : null;
+    if (!isManager_(u) && !(lead && lead.ownerEmail === u.email)) throw new Error('Only the client\'s agent or a manager can release this unit.');
+    releaseUnit_(unit, u.email, reason || 'released by ' + displayName_(u.email));
+    return syncData_(u);
+  });
+}
+
+function api_saveUnit(d) {
+  const u = me_();
+  requireManager_(u);
+  return withLock_(function () { saveUnit_(d || {}, u.email); return syncData_(u); });
+}
+
+function api_importUnits(list) {
+  const u = me_();
+  requireManager_(u);
+  return withLock_(function () { return Object.assign(importUnits_(list), syncData_(u)); });
+}
+
+function api_deleteUnit(code) {
+  const u = me_();
+  requireAdmin_(u);
+  return withLock_(function () { deleteUnit_(code); return syncData_(u); });
+}
+
+/* ---------- reports ---------- */
+function api_activityReport(from, to) {
+  const u = me_();
+  return activityReport_(from, to, u);
+}
+
+/* ---------- import ---------- */
 function api_importRows(rows, source, project) {
   const u = me_();
   requireManager_(u);
@@ -134,11 +241,11 @@ function api_importRows(rows, source, project) {
       }, u.email, { system: true });
       if (res.lead) added++; else if (res.duplicate) dups++; else skipped++;
     });
-    return { added: added, dups: dups, skipped: skipped, leads: visibleLeads_(u) };
+    return Object.assign({ added: added, dups: dups, skipped: skipped }, syncData_(u));
   });
 }
 
-/* ---------- المشاريع (مدير) ---------- */
+/* ---------- projects & templates (managers) ---------- */
 function api_saveProjects(list) {
   const u = me_();
   requireManager_(u);
@@ -147,22 +254,33 @@ function api_saveProjects(list) {
     if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, SCHEMA.Projects.length).clearContent();
     clearCache_('Projects');
     (list || []).filter(function (p) { return String(p.name || '').trim(); }).forEach(function (p) {
-      insert_('Projects', { name: String(p.name).trim(), country: p.country || '', units: (p.units || []).join(', '), active: 'TRUE' });
+      insert_('Projects', { name: String(p.name).trim(), country: p.country || '', units: '', active: 'TRUE' });
     });
-    return api_bootstrap().projects;
+    return projects_();
   });
 }
 
-/* ---------- الأدمن ---------- */
-function api_adminData_() {
+function api_saveTemplates(list) {
+  const u = me_();
+  requireManager_(u);
+  const clean = (list || []).map(function (t) { return { name: String(t.name || '').trim(), text: String(t.text || '').trim() }; })
+    .filter(function (t) { return t.name && t.text; }).slice(0, 30);
+  setSetting_('WA_TEMPLATES', JSON.stringify(clean));
+  return templates_();
+}
+
+/* ---------- admin ---------- */
+function adminData_() {
   const s = settings_();
+  const shown = {};
+  Object.keys(s).forEach(function (k) { if (k !== 'WA_TEMPLATES') shown[k] = s[k]; });
   return {
     users: users_().map(function (x) { return { email: x.email, name: x.name, role: x.role, active: truthy_(x.active), receivesLeads: truthy_(x.receivesLeads), phone: x.phone }; }),
-    settings: s,
+    settings: shown,
     metaTokenSet: !!secret_('META_PAGE_TOKEN'),
     intakeSecret: secret_('INTAKE_SECRET'),
     spreadsheetUrl: ss_().getUrl(),
-    spreadsheetId: ss_().getId(),
+    calendarId: secret_('CALENDAR_ID'),
     lastAutomation: secret_('LAST_AUTOMATION_RUN'),
     lastMetaSync: s.META_LAST_SYNC_AT || '',
     lastError: secret_('LAST_AUTOMATION_ERROR'),
@@ -181,13 +299,13 @@ function api_saveUsers(list) {
       };
     }).filter(function (x) { return /@/.test(x.email); });
     if (!clean.some(function (x) { return x.email === u.email && x.role === 'admin' && x.active === 'TRUE'; })) {
-      throw new Error('مينفعش تشيل نفسك من الأدمن.');
+      throw new Error('You cannot remove yourself as admin.');
     }
     const sh = sh_('Users');
     if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, SCHEMA.Users.length).clearContent();
     clearCache_('Users');
     clean.forEach(function (x) { insert_('Users', x); });
-    return api_adminData_();
+    return adminData_();
   });
 }
 
@@ -201,17 +319,15 @@ function api_saveSettings(map) {
         if (map[k]) PropertiesService.getScriptProperties().setProperty('META_PAGE_TOKEN', String(map[k]).trim());
         return;
       }
-      if (DEFAULT_SETTINGS[k]) setSetting_(k, String(map[k] == null ? '' : map[k]).trim());
+      if (DEFAULT_SETTINGS[k] && k !== 'WA_TEMPLATES' && k !== 'APP_URL') {
+        let v = map[k];
+        if (typeof v === 'boolean') v = v ? 'TRUE' : 'FALSE';
+        setSetting_(k, String(v == null ? '' : v).trim());
+      }
     });
     if (settings_().DIGEST_HOUR !== before) installTriggers_();
-    return api_adminData_();
+    return adminData_();
   });
-}
-
-function api_clearMetaToken() {
-  requireAdmin_(me_());
-  PropertiesService.getScriptProperties().deleteProperty('META_PAGE_TOKEN');
-  return api_adminData_();
 }
 
 function api_testMeta() {
@@ -222,5 +338,5 @@ function api_testMeta() {
 function api_runAutomationsNow() {
   requireAdmin_(me_());
   runAutomations();
-  return api_adminData_();
+  return adminData_();
 }
