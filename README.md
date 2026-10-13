@@ -2,7 +2,7 @@
 
 Lead and sales CRM for EDEN Developments, built on Google Apps Script with a Google Sheet as the database.
 
-> Step-by-step setup in Egyptian Arabic: **SETUP-AR.md**
+> Live at **https://crm.edenalkhalij.com** · setup in Egyptian Arabic: **SETUP-AR.md**
 
 ## What it does
 
@@ -53,21 +53,30 @@ Lead and sales CRM for EDEN Developments, built on Google Apps Script with a Goo
 - Daily activity report per agent (calls, WhatsApp, visits, meetings, tasks done, sales) for today, yesterday, 7 / 30 days, this month
 - Export leads, inventory and activity to Excel (CSV) or copy straight into Excel
 
-## Files
+## How it runs
 
 ```
-src/                    the CRM (company accounts only)
-intake/                 small project that receives the website form (public)
-website-snippet.html    form code for the website
+apps-script/            server (Google Apps Script) — data in a Google Sheet, emails, calendar, triggers
+web/                    the website at https://crm.edenalkhalij.com (GitHub Pages)
+tests/                  server tests on a mocked Apps Script runtime (run on every push)
+.github/workflows/      test → push to Apps Script → publish the site, on every push to main
+website-snippet.html    lead form for the company website
 ```
 
-## Updating from v1
-1. `npx clasp push -f`
-2. Run `setup()` once from the editor and approve the new Calendar permission. It adds the new sheets (Units, Tasks) and columns, and moves any unit codes typed into Projects into the inventory.
-3. Deploy → Manage deployments → Edit → New version → Deploy.
+- The site signs people in with Google ("Sign in with Google", company accounts only). The Apps Script
+  web app verifies the Google token, checks the user is listed and active in Settings → Team, and issues
+  a signed 12-hour session. Every action re-checks the user's role on the server.
+- The Apps Script web app is deployed "Execute as me / Anyone" so the site can call it without Google
+  cookies; nothing is readable without a valid session.
+- GitHub Actions pushes `apps-script/` through the Apps Script API (no clasp needed), keeps one
+  deployment ("EDEN CRM API") so the API URL never changes, and writes the API URL into `web/config.js`.
+
+Setup steps (Egyptian Arabic): **SETUP-AR.md**. Required repo settings:
+`CLASPRC_JSON` (secret), `SCRIPT_ID` and `GOOGLE_CLIENT_ID` (variables), Pages source = GitHub Actions.
 
 ## Limits
 - Google Sheets is comfortable up to tens of thousands of leads.
 - MailApp sends about 1,500 emails a day on Workspace.
 - Meta leads arrive within 10 minutes, not instantly (polling, not webhooks).
+- Apps Script allows a limited number of saved versions per project; the deploy only creates a version when the server code actually changed.
 - Excel export is a UTF-8 CSV, which Excel opens with Arabic names intact.

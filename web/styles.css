@@ -1,4 +1,4 @@
-<style>
+
 /* Layout: sticky header with tabs → filter bar → one working view (board / list / follow-ups / reports / settings); lead details open in a side panel (full screen on phones). */
 :root{
   --bg:#F3F5F1;--surface:#FFFFFF;--sunk:#E9EDE6;--fg:#18221E;--muted:#5B6A62;--line:#D7DDD3;
@@ -281,4 +281,16 @@ a.btn.primary{color:var(--accent-fg)}
 .sets>*,.groups>*,.rep-grid>*,.d-body>*{min-width:0}
 @media (max-width:520px){.brand small{display:none}.brand{font-size:18px}}
 input[type=password],input[type=time]{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:8px 10px;min-width:0;max-width:100%}
-</style>
+
+/* ---- sign-in ---- */
+.signin{min-height:100vh;display:grid;place-items:center;padding-inline:16px;padding-block:24px;background:var(--bg)}
+.signin-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:32px 28px;max-width:400px;width:100%;display:grid;gap:14px;justify-items:center;text-align:center;box-shadow:var(--shadow)}
+.signin-card .mark{width:44px;height:44px;border-radius:12px}
+.signin-card .mark svg{width:24px;height:24px}
+.signin-card h1{font-family:var(--f-display);font-size:24px;margin:0;font-weight:700;letter-spacing:.02em}
+.signin-card p{margin:0;color:var(--muted)}
+#gsi-btn{min-height:44px;display:grid;place-items:center}
+.signin-card .status{min-height:20px;font-size:13.5px}
+.signin-card .status.err{color:var(--danger)}
+.me .btn{padding:4px 10px;font-size:13px}
+@media (max-width:520px){.me>span:not(.av){display:none}}

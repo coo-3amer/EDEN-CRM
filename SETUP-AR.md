@@ -1,87 +1,89 @@
-# EDEN CRM — التنصيب خطوة بخطوة (Windows)
+# EDEN CRM — التشغيل على crm.edenalkhalij.com
 
-## 1) فك الضغط
-- كليك يمين على `eden-crm.zip` ← **Extract All** ← اكتب `D:\` بس ← **Extract**.
-- افتح `D:\eden-crm`، المفروض تلاقي جواه `src` و`intake` على طول.
-- دوس في شريط العنوان فوق، واكتب `cmd`، ودوس Enter.
-  - لو فتحت cmd من Start، اكتب `cd /d D:\eden-crm`، ومتنساش `/d`.
-
-## 2) مشروع Apps Script
-1. افتح https://script.google.com بحساب `coo@edenalkhalij.com` ← **New project** ← سمّيه `EDEN CRM`.
-2. من الترس ⚙️ **Project Settings**، انسخ الـ **Script ID**.
-
-## 3) اربط الفولدر
-```
-copy .clasp.json.example .clasp.json
-notepad .clasp.json
-```
-- امسح `PUT_MAIN_SCRIPT_ID_HERE` بس، والصق الـ ID مكانها، وسيب علامات التنصيص.
-- **Ctrl+S** واقفل Notepad.
-- اتأكد بالأمر `type .clasp.json`. لو لسه شايف PUT_MAIN... يبقى الحفظ ماتمّش.
-
-## 4) ارفع الكود
-```
-npx clasp push -f
-```
-- لو سألك عن `appsscript.json` قول **y**.
-- **Request contains an invalid argument** = الـ Script ID غلط أو مش متحط (ارجع لخطوة 3).
-- مش عامل login ← `npx clasp login`.
-- خطأ فيه Apps Script API ← شغّله من https://script.google.com/home/usersettings.
-
-## 5) شغّل setup
-1. في script.google.com اعمل Refresh، وافتح **Setup.gs**.
-2. اختار الدالة **setup**، ودوس **Run**.
-3. وافق على الصلاحيات: Advanced ← Go to EDEN CRM ← Allow. فيها Sheets والإيميل والكالندر والـ Triggers.
-4. من **Execution log** احفظ عندك:
-   - لينك الشيت
-   - `SPREADSHEET_ID`
-   - `INTAKE_SECRET`
-
-## 6) انشر
-```
-npx clasp deploy --description "v1"
-```
-بعدها **Deploy ← Manage deployments**، وانسخ لينك الـ **Web app** (آخره `/exec`). ده لينك البرنامج.
-
-## 7) جهّز البرنامج
-1. **Settings ← Projects**: ضيف المشاريع.
-2. **Inventory ← Import units**: الصق من Excel أعمدة `code, project, type, floor, area, price, currency`.
-3. **Settings ← Team and permissions**: ضيف كل واحد بإيميل الشركة، واختار الدور، وعلّم **Receives leads** للسيلز.
-4. **Settings ← WhatsApp templates**: عدّل الرسايل لو حابب.
-5. ابعت لينك البرنامج للفريق. **متشاركش شيت الداتا مع حد.**
-
-## 8) فورم الموقع (Intake)
-1. اعمل مشروع Apps Script جديد اسمه `EDEN CRM Intake`، وانسخ الـ Script ID بتاعه.
-2. اربطه وارفعه:
-   ```
-   cd intake
-   copy .clasp.json.example .clasp.json
-   notepad .clasp.json
-   ```
-   حط الـ ID، وبعدها افتح `notepad Code.gs`، وحط `SPREADSHEET_ID` و`INTAKE_SECRET`.
-   ```
-   npx clasp push -f
-   npx clasp deploy --description "v1"
-   ```
-3. في المحرر شغّل `doGet` مرة عشان توافق على الصلاحيات، وانسخ لينك الـ Web app.
-4. في `website-snippet.html` حط اللينك والـ Secret، وادّيه للي ماسك الموقع.
-
-## 9) Meta Lead Ads
-1. محتاج **Page Access Token** فيه صلاحية `leads_retrieval`. الأحسن من System User في Business Settings عشان مايخلصش.
-2. هات الـ **Form ID** لكل فورم من Meta Business Suite ← Instant Forms.
-3. في البرنامج: **Settings ← Meta Lead Ads**.
-4. حط الـ Token، والفورمات بالشكل ده (كل فورم في سطر):
-   ```
-   1234567890123456:Eden Walk
-   ```
-5. دوس **Save**، وبعدها **Test connection**.
+## الفكرة
+- الكود كله على GitHub في الريبو ده.
+- أي تعديل يتعمل في الريبو، GitHub Actions بيعمل لوحده:
+  1. يشغّل الاختبارات.
+  2. يرفع الكود على Apps Script ويحدّث الـ Web App.
+  3. ينشر الموقع على **crm.edenalkhalij.com**.
+- الدخول بحساب جوجل بتاع الشركة، ومينفعش يدخل غير اللي الأدمن ضافه في **Settings → Team**.
+- مش محتاج تنزّل ملفات ولا تشغّل `clasp` تاني.
 
 ---
 
-## التحديثات بعد كده
+## الإعداد (مرة واحدة بس)
+
+### 1) سر clasp (عشان GitHub يقدر يرفع على Apps Script)
+على جهازك افتح cmd واكتب:
 ```
-cd /d D:\eden-crm
-npx clasp push -f
+notepad %USERPROFILE%\.clasprc.json
 ```
-- شغّل `setup()` تاني لو التحديث فيه شيتات أو أعمدة جديدة.
-- بعدها **Deploy ← Manage deployments ← ✏️ Edit ← Version: New version ← Deploy**، عشان اللينك يفضل زي ما هو.
+هيفتح ملف فيه نص طويل. اعمل **Ctrl+A** وبعدين **Ctrl+C**.
+
+بعدها:
+1. افتح الريبو على GitHub ← **Settings** ← **Secrets and variables** ← **Actions**.
+2. تاب **Secrets** ← **New repository secret**.
+3. **Name:** `CLASPRC_JSON`، و **Secret:** الصق النص ← **Add secret**.
+
+> الملف ده مفتاح حسابك. متبعتهوش لحد، ومتحطهوش غير في Secrets.
+
+### 2) Script ID
+1. في نفس الصفحة، تاب **Variables** ← **New repository variable**.
+2. **Name:** `SCRIPT_ID`، و **Value:** الـ Script ID بتاع مشروع EDEN CRM. هتلاقيه في script.google.com ← ⚙️ Project Settings.
+
+### 3) زرار "Sign in with Google"
+1. افتح https://console.cloud.google.com بحساب `coo@edenalkhalij.com`.
+2. من فوق اختار **New Project**، وسمّيه `EDEN CRM`، ودوس **Create**.
+3. من القايمة روح **APIs & Services** ← **OAuth consent screen** (أو **Google Auth Platform**) ← **Get started**:
+   - App name: `EDEN CRM`.
+   - Support email: إيميلك.
+   - **Audience: Internal**. ده معناه إن حسابات الشركة بس هي اللي تقدر تدخل.
+   - كمّل ودوس **Create**.
+4. روح **Clients** (أو **Credentials**) ← **Create client**:
+   - Application type: **Web application**.
+   - Name: `EDEN CRM website`.
+   - **Authorized JavaScript origins** ← **Add URI** ← `https://crm.edenalkhalij.com`.
+   - دوس **Create**، وانسخ الـ **Client ID** (آخره `.apps.googleusercontent.com`).
+5. في GitHub ← **Variables** ← **New repository variable**:
+   - **Name:** `GOOGLE_CLIENT_ID`
+   - **Value:** الـ Client ID
+
+### 4) GitHub Pages والدومين
+1. الريبو ← **Settings** ← **Pages** ← **Source:** اختار **GitHub Actions**.
+2. **Custom domain:** اكتب `crm.edenalkhalij.com` ← **Save**.
+3. في الـ DNS بتاع edenalkhalij.com، زي ما عملت مع dashboard، ضيف record:
+   - Type: **CNAME**
+   - Name: `crm`
+   - Value: `coo-3amer.github.io`
+4. لما يظهر ✓، علّم **Enforce HTTPS**.
+
+### 5) أول نشر
+1. الريبو ← **Actions** ← **Deploy EDEN CRM** ← **Run workflow** ← **Run workflow**.
+2. استنى لحد ما الـ 3 خطوات يبقوا ✓ (test، apps-script، site).
+
+### 6) وافق على الصلاحيات الجديدة (مرة واحدة)
+1. افتح المشروع في script.google.com، واعمل Refresh.
+2. افتح **Setup.gs**، واختار **setup**، ودوس **Run**.
+3. وافق على الصلاحيات. فيها الكالندر، وهي اللي كانت ناقصة المرة اللي فاتت.
+
+البرنامج بيشتغل بحسابك إنت، فلازم الموافقة دي تتعمل قبل ما حد يدخل.
+
+### 7) افتح https://crm.edenalkhalij.com 🎉
+
+---
+
+## بعد كده
+- أي تعديل بطلبه، بيترفع على GitHub، وخلال دقيقتين بيبقى على الموقع لوحده.
+- لو التحديث فيه صلاحيات جديدة، هقولك تعيد خطوة 6.
+- كل نشر تقدر تتابعه من تاب **Actions** في الريبو.
+
+## لو حاجة مش شغالة
+| المشكلة | الحل |
+|---|---|
+| خطوة apps-script بتقول Apps Script API is off | شغّله من https://script.google.com/home/usersettings، وبعدها Re-run |
+| بتقول Google refused the clasp login | اعمل `npx clasp login` على جهازك، وحط الملف الجديد في `CLASPRC_JSON` |
+| الموقع بيقول "not connected yet" | ناقص `GOOGLE_CLIENT_ID` أو أول نشر ماخلصش. اعمل Run workflow تاني |
+| زرار جوجل بيقول origin not allowed | اتأكد إن `https://crm.edenalkhalij.com` مكتوب بالظبط في Authorized JavaScript origins |
+| "has not been added to EDEN CRM" | الأدمن يضيف الإيميل من **Settings → Team** |
+| الموقع بيقول "did not answer" بعد النشر | اعمل خطوة 6 (setup والموافقة) |
+| عايز تخرّج الكل من البرنامج | شغّل `signOutEveryone` من محرر Apps Script |

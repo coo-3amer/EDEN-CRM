@@ -46,6 +46,7 @@ function setup() {
     insert_('Users', { email: me, name: 'Admin', role: 'admin', active: 'TRUE', receivesLeads: 'FALSE', phone: '' });
   }
   if (!props.getProperty('INTAKE_SECRET')) props.setProperty('INTAKE_SECRET', Utilities.getUuid().replace(/-/g, ''));
+  if (!props.getProperty('SESSION_SECRET')) props.setProperty('SESSION_SECRET', Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''));
 
   migrateProjectUnits_();
   if (calendarOn_()) {
@@ -55,8 +56,8 @@ function setup() {
 
   Logger.log('✅ EDEN CRM is ready');
   Logger.log('Data spreadsheet: ' + ss.getUrl());
-  Logger.log('SPREADSHEET_ID (for the intake project): ' + ss.getId());
-  Logger.log('INTAKE_SECRET (for the intake project and the website form): ' + props.getProperty('INTAKE_SECRET'));
+  Logger.log('Website: ' + siteUrl_());
+  Logger.log('INTAKE_SECRET (for the website form): ' + props.getProperty('INTAKE_SECRET'));
 }
 
 /** Stop all automations */

@@ -1,0 +1,75 @@
+name: Deploy EDEN CRM
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Push the Apps Script code even if it did not change
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Server tests
+        run: node tests/run.js
+
+  apps-script:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      api_url: ${{ steps.gas.outputs.api_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - id: gas
+        name: Push to Apps Script and update the web app
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ vars.SCRIPT_ID }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          API_URL_FALLBACK: ${{ vars.API_URL }}
+          FORCE: ${{ inputs.force && '1' || '' }}
+        run: node .github/scripts/deploy-apps-script.mjs
+
+  site:
+    needs: apps-script
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write site config
+        env:
+          API_URL: ${{ needs.apps-script.outputs.api_url }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+        run: |
+          node -e 'const c={apiUrl:process.env.API_URL||"",googleClientId:process.env.GOOGLE_CLIENT_ID||"",domain:"edenalkhalij.com",version:(process.env.GITHUB_SHA||"").slice(0,7)};require("fs").writeFileSync("web/config.js","window.EDEN_CONFIG = "+JSON.stringify(c)+";\n")'
+          cat web/config.js
+          sed -i "s/app.js\"/app.js?v=${GITHUB_SHA::7}\"/; s/auth.js\"/auth.js?v=${GITHUB_SHA::7}\"/; s/styles.css\"/styles.css?v=${GITHUB_SHA::7}\"/; s/config.js\"/config.js?v=${GITHUB_SHA::7}\"/" web/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: pages
+        uses: actions/deploy-pages@v4

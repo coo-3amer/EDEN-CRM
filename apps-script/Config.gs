@@ -3,6 +3,8 @@
  */
 const APP_NAME = 'EDEN CRM';
 const TZ = 'Africa/Cairo';
+const DEFAULT_SITE_URL = 'https://crm.edenalkhalij.com';
+const SESSION_HOURS = 12; // how long a sign-in lasts before Google sign-in is needed again
 
 const STAGES = [
   ['new', 'New'],
@@ -85,5 +87,5 @@ const DEFAULT_SETTINGS = {
   WA_TEMPLATES: [JSON.stringify(DEFAULT_TEMPLATES), 'WhatsApp message templates (JSON)'],
   META_FORM_IDS: ['', 'Meta Lead Ads forms, one per line: FormID:Project name'],
   META_API_VERSION: ['v21.0', 'Graph API version'],
-  APP_URL: ['', 'CRM link — saved automatically the first time an admin opens it'],
+  APP_URL: ['', 'Link used in emails (leave empty for https://crm.edenalkhalij.com)'],
 };

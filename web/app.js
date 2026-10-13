@@ -1,4 +1,4 @@
-<script>
+
 /* ================= EDEN CRM — UI ================= */
 let ME = null, PEOPLE = [], PROJECTS = [], LEADS = [], TASKS = [], UNITS = [], C = null, ADMIN = null, TEMPLATES = [], CFG = {};
 const F = { q: '', owner: 'all', source: '', project: '', rating: '' };
@@ -10,10 +10,7 @@ const RW = { hot: 0, warm: 1, cold: 2 };
 
 /* ---------- utils ---------- */
 function api(fn) {
-  const args = Array.prototype.slice.call(arguments, 1);
-  return new Promise(function (res, rej) {
-    google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn].apply(null, args);
-  });
+  return EdenAuth.call(fn, Array.prototype.slice.call(arguments, 1));
 }
 function store(k, v) { try { if (v === undefined) return localStorage.getItem('crm.' + k); localStorage.setItem('crm.' + k, v); } catch (e) { return null; } }
 function h(t, a) {
@@ -156,7 +153,8 @@ function doRender() {
     return h('button', { class: 'tab', role: 'tab', 'aria-selected': String(tab === t[0]), onclick: function () { tab = t[0]; store('tab', tab); settingsDirty = false; selected.clear(); render(); } },
       t[1], t[0] === 'today' && late ? h('span', { class: 'tab-n' }, late) : null);
   }));
-  put($('me'), [av(ME.email), h('span', {}, { admin: 'Admin', manager: 'Manager', sales: 'Sales' }[ME.role])]);
+  put($('me'), [av(ME.email), h('span', { title: ME.email }, (ME.name || ME.email) + ' · ' + { admin: 'Admin', manager: 'Manager', sales: 'Sales' }[ME.role]),
+    h('button', { class: 'btn ghost', onclick: function () { EdenAuth.signOut(); } }, 'Sign out')]);
   $('bar').hidden = ['pipeline', 'list', 'today'].indexOf(tab) < 0;
   $('f-owner').hidden = !isMgr();
   renderFilters();
@@ -779,8 +777,9 @@ function metaSec() {
 }
 function websiteSec() {
   return h('section', { class: 'sec' }, h('h2', {}, 'Website form and data'),
-    h('p', { class: 'hint' }, 'The website form posts to the Intake project, and the CRM picks those leads up every 10 minutes. The ready-made form code is in website-snippet.html. This is the secret to put in it and in the Intake project:'),
-    h('div', { class: 'mono' }, ADMIN.intakeSecret || '—'),
+    h('p', { class: 'hint' }, 'The website form sends leads straight to the CRM. Put these two values in website-snippet.html (in the GitHub repo):'),
+    h('div', { class: 'field' }, h('label', {}, 'Form address (API URL)'), h('div', { class: 'mono' }, ADMIN.apiUrl || '—')),
+    h('div', { class: 'field', style: 'margin-top:8px' }, h('label', {}, 'Secret'), h('div', { class: 'mono' }, ADMIN.intakeSecret || '—')),
     h('p', { class: 'hint', style: 'margin-top:12px' }, 'The data spreadsheet is for you only. Never share it with sales, or they will see each other\'s leads.'),
     h('a', { href: ADMIN.spreadsheetUrl, target: '_blank', rel: 'noopener', class: 'btn' }, 'Open data spreadsheet'));
 }
@@ -1238,16 +1237,22 @@ $('f-rating').addEventListener('change', function (e) { F.rating = e.target.valu
 $('add-btn').addEventListener('click', function () { openLead('new'); });
 $('refresh-btn').addEventListener('click', function () { refresh(true); });
 
-/* ---------- boot ---------- */
-api('api_bootstrap').then(function (b) {
-  ME = b.me; PEOPLE = b.people; PROJECTS = b.projects; LEADS = b.leads; TASKS = b.tasks; UNITS = b.units;
-  C = b.consts; ADMIN = b.admin || null; TEMPLATES = b.templates || []; CFG = b.cfg || {};
-  TODAY = b.today || localYmd();
-  SL = Object.fromEntries(C.stages); SRC = Object.fromEntries(C.sources); RL = Object.fromEntries(C.ratings);
-  USL = Object.fromEntries(C.unitStatuses); TTL = Object.fromEntries(C.taskTypes);
-  F.owner = isMgr() ? 'all' : 'me';
-  render();
-}).catch(function (e) {
-  put($('view'), h('div', { class: 'err-page' }, h('h2', {}, 'You can\'t sign in yet'), h('p', {}, errText(e))));
-});
-</script>
+/* ---------- boot (called by auth.js once signed in) ---------- */
+function boot() {
+  put($('view'), h('div', { class: 'skeleton' }, 'Loading EDEN CRM…'));
+  api('api_bootstrap').then(function (b) {
+    ME = b.me; PEOPLE = b.people; PROJECTS = b.projects; LEADS = b.leads; TASKS = b.tasks; UNITS = b.units;
+    C = b.consts; ADMIN = b.admin || null; TEMPLATES = b.templates || []; CFG = b.cfg || {};
+    TODAY = b.today || localYmd();
+    SL = Object.fromEntries(C.stages); SRC = Object.fromEntries(C.sources); RL = Object.fromEntries(C.ratings);
+    USL = Object.fromEntries(C.unitStatuses); TTL = Object.fromEntries(C.taskTypes);
+    F.owner = isMgr() ? 'all' : 'me';
+    INV = null; ACT = null;
+    render();
+  }).catch(function (e) {
+    if (e && e.auth) return;
+    put($('view'), h('div', { class: 'err-page' }, h('h2', {}, 'EDEN CRM could not load'), h('p', {}, errText(e)),
+      h('button', { class: 'btn primary', onclick: boot }, 'Try again')));
+  });
+}
+window.EdenApp = { boot: boot };

@@ -30,11 +30,16 @@ function displayName_(email) {
   return (u && u.name) || email;
 }
 
+/** Set by the web router (Web.gs) from the signed-in session for each request. */
+let CURRENT_EMAIL_ = '';
+
+function authError_(msg) { const e = new Error(msg); e.auth = true; return e; }
+
 function me_() {
-  const email = String(Session.getActiveUser().getEmail() || '').toLowerCase();
-  if (!email) throw new Error('Could not identify your account. Open EDEN CRM with your company account (@edenalkhalij.com).');
+  const email = String(CURRENT_EMAIL_ || Session.getActiveUser().getEmail() || '').toLowerCase();
+  if (!email) throw authError_('Please sign in with your company Google account.');
   const u = userByEmail_(email);
-  if (!u || !truthy_(u.active)) throw new Error('Your account (' + email + ') has not been added to EDEN CRM or is inactive. Ask the admin to add you.');
+  if (!u || !truthy_(u.active)) throw authError_('Your account (' + email + ') has not been added to EDEN CRM or is inactive. Ask the admin to add you.');
   return { email: email, name: u.name || email, role: u.role };
 }
 

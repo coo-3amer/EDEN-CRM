@@ -1,7 +1,7 @@
 <!--
   EDEN CRM — website form
-  1) Replace INTAKE_URL with the Intake project web app link
-  2) Replace INTAKE_SECRET with the secret shown in Settings → Website form
+  1) Replace INTAKE_URL with the "Form address (API URL)" shown in CRM → Settings → Website form
+  2) Replace INTAKE_SECRET with the "Secret" shown in the same place
   3) Set data-project to the project of each page
 -->
 <form id="eden-lead-form" data-project="Eden Walk">
@@ -22,6 +22,7 @@
     e.preventDefault();
     var q = new URLSearchParams(location.search);
     var data = {
+      action: 'intake',
       secret: INTAKE_SECRET,
       source: 'website',
       project: form.dataset.project || '',

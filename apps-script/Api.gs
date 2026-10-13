@@ -1,18 +1,7 @@
 /**
- * Functions the browser calls through google.script.run.
- * Every one starts by identifying the user (me_) and applying permissions.
+ * The CRM's actions. The website calls them through doPost (Web.gs), which first checks
+ * the signed-in session. Every action identifies the user again (me_) and applies permissions.
  */
-
-function doGet() {
-  return HtmlService.createTemplateFromFile('Index').evaluate()
-    .setTitle('EDEN CRM')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-function include(name) {
-  return HtmlService.createHtmlOutputFromFile(name).getContent();
-}
 
 function visibleLeads_(u) {
   return rows_('Leads').filter(function (l) { return canSee_(u, l); }).map(publicLead_);
@@ -29,9 +18,6 @@ function projects_() {
 
 function api_bootstrap() {
   const u = me_();
-  if (isAdmin_(u) && !settings_().APP_URL) {
-    try { const url = ScriptApp.getService().getUrl(); if (url) setSetting_('APP_URL', url); } catch (e) { /* ignore */ }
-  }
   const s = settings_();
   const out = Object.assign(syncData_(u), {
     me: u,
@@ -279,6 +265,8 @@ function adminData_() {
     settings: shown,
     metaTokenSet: !!secret_('META_PAGE_TOKEN'),
     intakeSecret: secret_('INTAKE_SECRET'),
+    apiUrl: apiUrl_(),
+    siteUrl: appUrl_(),
     spreadsheetUrl: ss_().getUrl(),
     calendarId: secret_('CALENDAR_ID'),
     lastAutomation: secret_('LAST_AUTOMATION_RUN'),

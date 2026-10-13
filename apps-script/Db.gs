@@ -145,11 +145,10 @@ function setSetting_(key, value) {
   else insert_('Settings', { key: key, value: value, description: (DEFAULT_SETTINGS[key] || [])[1] || '' });
 }
 function secret_(key) { return PropertiesService.getScriptProperties().getProperty(key) || ''; }
-function appUrl_() {
-  const s = settings_().APP_URL;
-  if (s) return s;
-  try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
-}
+function siteUrl_() { return typeof SITE_URL !== 'undefined' && SITE_URL ? SITE_URL : DEFAULT_SITE_URL; }
+function appUrl_() { return settings_().APP_URL || siteUrl_(); }
+function apiUrl_() { try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; } }
+function clientId_() { return typeof GOOGLE_CLIENT_ID !== 'undefined' && GOOGLE_CLIENT_ID ? GOOGLE_CLIENT_ID : secret_('GOOGLE_CLIENT_ID'); }
 function templates_() {
   try {
     const t = JSON.parse(settings_().WA_TEMPLATES || '[]');
