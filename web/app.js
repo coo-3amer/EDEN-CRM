@@ -702,7 +702,7 @@ function usersSec() {
   const draw = function () {
     put(body, users.map(function (u, i) {
       return h('tr', {},
-        h('td', {}, h('input', { type: 'email', id: 'u-email-' + i, value: u.email, placeholder: 'name@edenalkhalij.com', oninput: function (e) { u.email = e.target.value.trim().toLowerCase(); dirty(); } })),
+        h('td', {}, h('input', { type: 'email', id: 'u-email-' + i, value: u.email, placeholder: 'name@gmail.com or name@edenalkhalij.com', oninput: function (e) { u.email = e.target.value.trim().toLowerCase(); dirty(); } })),
         h('td', {}, h('input', { type: 'text', id: 'u-name-' + i, value: u.name || '', placeholder: 'Name', dir: 'auto', oninput: function (e) { u.name = e.target.value; dirty(); } })),
         h('td', {}, h('select', { id: 'u-role-' + i, onchange: function (e) { u.role = e.target.value; dirty(); } },
           [['sales', 'Sales'], ['manager', 'Manager'], ['admin', 'Admin']].map(function (r) { return h('option', { value: r[0], selected: u.role === r[0] }, r[1]); }))),
@@ -712,7 +712,7 @@ function usersSec() {
   };
   draw();
   return h('section', { class: 'sec' }, h('h2', {}, 'Team and permissions'),
-    h('p', { class: 'hint' }, 'Everyone who opens the CRM must be listed here with their company email. Sales see only their own leads, managers see everything and assign, the admin controls settings. "Receives leads" puts the person in auto-assignment. When someone leaves, untick Active and reassign their leads.'),
+    h('p', { class: 'hint' }, 'Everyone who opens the CRM must be listed here. Any email works (company, Gmail, Outlook…): they sign in with a code sent to that email. Sales see only their own leads, managers see everything and assign, the admin controls settings. "Receives leads" puts the person in auto-assignment. When someone leaves, untick Active and reassign their leads.'),
     h('div', { class: 'tbl-wrap' }, h('table', { class: 'users-tbl', style: 'min-width:640px' },
       h('thead', {}, h('tr', {}, ['Email', 'Name', 'Role', 'Receives leads', 'Active'].map(function (t) { return h('th', {}, t); }))), body)),
     h('div', { class: 'acts', style: 'justify-content:flex-start;margin-top:10px' },

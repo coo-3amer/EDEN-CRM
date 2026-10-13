@@ -68,7 +68,7 @@
     e.preventDefault();
     if (!$('step-email').hidden) {
       const email = $('si-email').value.trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg('Enter your work email address.', true); return; }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg('Enter your email address.', true); return; }
       busy($('si-send'), true, 'Sending…'); msg('');
       try {
         const j = await post({ fn: 'sendCode', email: email });
@@ -104,7 +104,7 @@
     if (!window.google || !google.accounts || !google.accounts.id) { setTimeout(initGsi, 200); return; }
     google.accounts.id.initialize({
       client_id: CFG.googleClientId, callback: onCredential, auto_select: true,
-      hd: CFG.domain || undefined, use_fedcm_for_prompt: true, itp_support: true,
+      use_fedcm_for_prompt: true, itp_support: true,
     });
     google.accounts.id.renderButton($('gsi-btn'), { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', width: 280 });
     $('gsi-wrap').hidden = false;

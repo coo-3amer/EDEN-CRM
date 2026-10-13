@@ -119,7 +119,7 @@ function activeUser_(email) {
 
 function sendCode_(email) {
   email = String(email || '').trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw authError_('Enter your work email address.');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw authError_('Enter your email address.');
   const u = activeUser_(email);
   const cache = CacheService.getScriptCache();
   const key = 'otp:' + email;
