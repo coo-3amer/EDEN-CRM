@@ -19,8 +19,21 @@
   <div class="signin-card">
     <div class="mark" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1.5c3 2.2 4.5 4.6 4.5 7.2A4.5 4.5 0 0 1 8 13.2a4.5 4.5 0 0 1-4.5-4.5C3.5 6.1 5 3.7 8 1.5Z" fill="var(--accent-fg)"/><path d="M8 14.5V7" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/></svg></div>
     <h1>EDEN CRM</h1>
-    <p>Sign in with your EDEN Google account.</p>
-    <div id="gsi-btn"></div>
+    <p id="signin-intro">Sign in with your EDEN work email.</p>
+    <form id="code-form" class="code-form" novalidate>
+      <div id="step-email" class="code-step">
+        <label for="si-email">Work email</label>
+        <input type="email" id="si-email" autocomplete="email" placeholder="name@edenalkhalij.com" required>
+        <button type="submit" class="btn primary" id="si-send">Email me a sign-in code</button>
+      </div>
+      <div id="step-code" class="code-step" hidden>
+        <label for="si-code">6-digit code sent to <b id="si-to"></b></label>
+        <input type="text" id="si-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+        <button type="submit" class="btn primary" id="si-verify">Sign in</button>
+        <button type="button" class="btn ghost" id="si-back">Use another email or resend</button>
+      </div>
+    </form>
+    <div id="gsi-wrap" hidden><div class="or"><span>or</span></div><div id="gsi-btn"></div></div>
     <p id="signin-msg" class="status" role="status"></p>
   </div>
 </div>

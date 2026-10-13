@@ -63,16 +63,17 @@ tests/                  server tests on a mocked Apps Script runtime (run on eve
 website-snippet.html    lead form for the company website
 ```
 
-- The site signs people in with Google ("Sign in with Google", company accounts only). The Apps Script
-  web app verifies the Google token, checks the user is listed and active in Settings → Team, and issues
-  a signed 12-hour session. Every action re-checks the user's role on the server.
+- Sign-in: the user enters their work email and gets a 6-digit code by email (valid 10 minutes, 5 tries),
+  or uses "Sign in with Google" when `GOOGLE_CLIENT_ID` is set. Only people listed and active in
+  Settings → Team can sign in. The server then issues a signed 12-hour session, and every action
+  re-checks the user's role.
 - The Apps Script web app is deployed "Execute as me / Anyone" so the site can call it without Google
   cookies; nothing is readable without a valid session.
 - GitHub Actions pushes `apps-script/` through the Apps Script API (no clasp needed), keeps one
   deployment ("EDEN CRM API") so the API URL never changes, and writes the API URL into `web/config.js`.
 
 Setup steps (Egyptian Arabic): **SETUP-AR.md**. Required repo settings:
-`CLASPRC_JSON` (secret), `SCRIPT_ID` and `GOOGLE_CLIENT_ID` (variables), Pages source = GitHub Actions.
+`CLASPRC_JSON` (secret), `SCRIPT_ID` (variable), optional `GOOGLE_CLIENT_ID` (variable), Pages source = GitHub Actions.
 
 ## Limits
 - Google Sheets is comfortable up to tens of thousands of leads.

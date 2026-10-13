@@ -294,3 +294,13 @@ input[type=password],input[type=time]{border:1px solid var(--line);border-radius
 .signin-card .status.err{color:var(--danger)}
 .me .btn{padding:4px 10px;font-size:13px}
 @media (max-width:520px){.me>span:not(.av){display:none}}
+
+.code-form{width:100%}
+.code-step{display:grid;gap:8px;text-align:start}
+.code-step label{font-size:13px;color:var(--muted);font-weight:500}
+.code-step input{width:100%;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+#si-code{font-size:24px;letter-spacing:10px;text-align:center;font-variant-numeric:tabular-nums}
+.code-step .btn{justify-content:center;padding-block:10px}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px;width:100%;margin:4px 0 10px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+#gsi-wrap{width:100%;display:grid;justify-items:center}

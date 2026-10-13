@@ -42,6 +42,8 @@ function handleRequest_(body) {
   try {
     if (body.action === 'intake') return intakeRequest_(body);
     if (body.fn === 'auth') return { ok: true, result: signIn_(body.idToken) };
+    if (body.fn === 'sendCode') return { ok: true, result: sendCode_(body.email) };
+    if (body.fn === 'verifyCode') return { ok: true, result: verifyCode_(body.email, body.code) };
     const fn = apiMap_()[body.fn];
     if (!fn) throw new Error('Unknown action.');
     CURRENT_EMAIL_ = verifySession_(body.session);
@@ -100,6 +102,58 @@ function verifySession_(tok) {
   const exp = Number(raw.slice(i + 1));
   if (i < 1 || !exp || Date.now() > exp) throw authError_('Your sign-in has ended. Please sign in again.');
   return raw.slice(0, i).toLowerCase();
+}
+
+/* ---------- sign-in with a one-time code by email ---------- */
+const CODE_MINUTES_ = 10, CODE_TRIES_ = 5;
+
+function codeHash_(email, code) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(email + '|' + code, sessionKey_()));
+}
+
+function activeUser_(email) {
+  const u = userByEmail_(email);
+  if (!u || !truthy_(u.active)) throw authError_('Your account (' + email + ') has not been added to EDEN CRM or is inactive. Ask the admin to add you.');
+  return u;
+}
+
+function sendCode_(email) {
+  email = String(email || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw authError_('Enter your work email address.');
+  const u = activeUser_(email);
+  const cache = CacheService.getScriptCache();
+  const key = 'otp:' + email;
+  const prev = JSON.parse(cache.get(key) || 'null');
+  if (prev && Date.now() - prev.sent < 60000) throw authError_('A code was just sent. Wait a minute before asking for another one.');
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  cache.put(key, JSON.stringify({ h: codeHash_(email, code), tries: 0, sent: Date.now(), exp: Date.now() + CODE_MINUTES_ * 60000 }), CODE_MINUTES_ * 60);
+  MailApp.sendEmail({
+    to: email, name: APP_NAME, subject: 'Your EDEN CRM sign-in code: ' + code,
+    htmlBody: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18221E">' +
+      '<p>Hi ' + esc_(u.name || '') + ',</p><p>Your EDEN CRM sign-in code is</p>' +
+      '<p style="font-size:28px;font-weight:bold;letter-spacing:6px;margin:8px 0">' + code + '</p>' +
+      '<p style="color:#5B6A62">It works for ' + CODE_MINUTES_ + ' minutes. If you did not try to sign in, ignore this email.</p></div>',
+  });
+  return { sent: true, minutes: CODE_MINUTES_ };
+}
+
+function verifyCode_(email, code) {
+  email = String(email || '').trim().toLowerCase();
+  code = String(code || '').replace(/\D/g, '');
+  const cache = CacheService.getScriptCache();
+  const key = 'otp:' + email;
+  const rec = JSON.parse(cache.get(key) || 'null');
+  if (!rec || Date.now() > rec.exp) throw authError_('This code has expired. Ask for a new one.');
+  if (rec.tries >= CODE_TRIES_) { cache.remove(key); throw authError_('Too many wrong tries. Ask for a new code.'); }
+  if (codeHash_(email, code) !== rec.h) {
+    rec.tries++;
+    cache.put(key, JSON.stringify(rec), Math.max(1, Math.round((rec.exp - Date.now()) / 1000)));
+    throw authError_('That code is not right. Check the latest email and try again.');
+  }
+  cache.remove(key);
+  activeUser_(email);
+  const exp = Date.now() + SESSION_HOURS * 36e5;
+  return { session: makeSession_(email, exp), email: email, exp: exp };
 }
 
 /** Ends every open session (e.g. after a phone is lost): rotate the key */

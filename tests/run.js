@@ -242,6 +242,26 @@ ok(!post({ action: 'intake', secret: 'wrong', name: 'X', phone: '01000000999' })
 const intake = post({ action: 'intake', secret: st.props.INTAKE_SECRET, name: 'Form Lead', phone: '01000000999', project: 'Eden Walk', message: 'hi' });
 ok(intake.ok && as(M, 'api_sync').leads.length === before + 1, 'website intake creates lead immediately');
 ok(JSON.parse(ctx.doGet().text).ok, 'doGet health');
+// email code sign-in
+st.mails = [];
+ok(post({ fn: 'sendCode', email: 'nobody@edenalkhalij.com' }).auth, 'code refused for unlisted email');
+const sc = post({ fn: 'sendCode', email: ' Mgr@EdenAlkhalij.com ' });
+const codeMail = st.mails.find(m => /sign-in code/.test(m.subject));
+ok(sc.ok && codeMail && codeMail.to === M, 'code emailed');
+const code = codeMail.subject.match(/(\d{6})/)[1];
+ok(/wait a minute/i.test(post({ fn: 'sendCode', email: M }).error), 'resend throttled');
+ok(post({ fn: 'verifyCode', email: M, code: '000000' === code ? '111111' : '000000' }).auth, 'wrong code rejected');
+const vc = post({ fn: 'verifyCode', email: M, code: code });
+ok(vc.ok && vc.result.session && post({ fn: 'api_sync', session: vc.result.session }).ok, 'code sign-in gives working session');
+ok(post({ fn: 'verifyCode', email: M, code: code }).auth, 'code works once');
+NOW += 61000; post({ fn: 'sendCode', email: M });
+const code2 = st.mails.filter(m => /sign-in code/.test(m.subject)).pop().subject.match(/(\d{6})/)[1];
+for (let i = 0; i < 5; i++) post({ fn: 'verifyCode', email: M, code: code2 === '999999' ? '999998' : '999999' });
+ok(/Too many/.test(post({ fn: 'verifyCode', email: M, code: code2 }).error), 'locked after 5 wrong tries');
+NOW += 61000; post({ fn: 'sendCode', email: M });
+NOW += 11 * 60000;
+const code3 = st.mails.filter(m => /sign-in code/.test(m.subject)).pop().subject.match(/(\d{6})/)[1];
+ok(/expired/.test(post({ fn: 'verifyCode', email: M, code: code3 }).error), 'code expires after 10 minutes');
 st.activeEmail = '';
 
 // 17. no Arabic left in server messages / emails

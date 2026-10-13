@@ -2,7 +2,7 @@
 (function (root) {
   function makeEnv(opts) {
     opts = opts || {};
-    const st = { activeEmail: '', mails: [], fetches: [], props: {}, triggers: [], events: {}, evSeq: 0, meta: null };
+    const st = { cache: {}, activeEmail: '', mails: [], fetches: [], props: {}, triggers: [], events: {}, evSeq: 0, meta: null };
     const RealDate = Date;
     const now = () => (opts.now ? opts.now() : RealDate.now());
     function makeSheet(name) {
@@ -61,6 +61,7 @@
         computeHmacSha256Signature: (v, k) => hmac(v, k),
         newBlob: (bytes) => ({ getDataAsString: () => fromUtf8(bytes) }),
       },
+      CacheService: { getScriptCache: () => ({ get: k => { const v = st.cache[k]; return v && v.exp > now() ? v.val : null; }, put: (k, v, s) => { st.cache[k] = { val: v, exp: now() + (s || 600) * 1000 }; }, remove: k => { delete st.cache[k]; } }) },
       ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ text: s, setMimeType() { return this; } }) },
       MailApp: { sendEmail: o => st.mails.push(o) },
       UrlFetchApp: { fetch: url => { st.fetches.push(url); return st.meta ? st.meta(url) : { getContentText: () => '{"data":[]}', getResponseCode: () => 200 }; } },

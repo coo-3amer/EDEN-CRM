@@ -6,7 +6,9 @@
   1. يشغّل الاختبارات.
   2. يرفع الكود على Apps Script ويحدّث الـ Web App.
   3. ينشر الموقع على **crm.edenalkhalij.com**.
-- الدخول بحساب جوجل بتاع الشركة، ومينفعش يدخل غير اللي الأدمن ضافه في **Settings → Team**.
+- الدخول بإيميل الشغل: الشخص يكتب إيميله، فيوصله كود من 6 أرقام صالح 10 دقايق، ويفضل داخل 12 ساعة.
+- مينفعش يدخل غير اللي الأدمن ضافه في **Settings → Team**.
+- زرار Sign in with Google اختياري، وتقدر تضيفه بعدين (خطوة 3).
 - مش محتاج تنزّل ملفات ولا تشغّل `clasp` تاني.
 
 ---
@@ -31,7 +33,9 @@ notepad %USERPROFILE%\.clasprc.json
 1. في نفس الصفحة، تاب **Variables** ← **New repository variable**.
 2. **Name:** `SCRIPT_ID`، و **Value:** الـ Script ID بتاع مشروع EDEN CRM. هتلاقيه في script.google.com ← ⚙️ Project Settings.
 
-### 3) زرار "Sign in with Google"
+### 3) (اختياري) زرار "Sign in with Google"
+الدخول بكود الإيميل شغال من غير الخطوة دي. اعملها بس لو عايز زرار جوجل كمان.
+
 1. افتح https://console.cloud.google.com بحساب `coo@edenalkhalij.com`.
 2. من فوق اختار **New Project**، وسمّيه `EDEN CRM`، ودوس **Create**.
 3. من القايمة روح **APIs & Services** ← **OAuth consent screen** (أو **Google Auth Platform**) ← **Get started**:
@@ -82,7 +86,8 @@ notepad %USERPROFILE%\.clasprc.json
 |---|---|
 | خطوة apps-script بتقول Apps Script API is off | شغّله من https://script.google.com/home/usersettings، وبعدها Re-run |
 | بتقول Google refused the clasp login | اعمل `npx clasp login` على جهازك، وحط الملف الجديد في `CLASPRC_JSON` |
-| الموقع بيقول "not connected yet" | ناقص `GOOGLE_CLIENT_ID` أو أول نشر ماخلصش. اعمل Run workflow تاني |
+| الموقع بيقول "not connected yet" | ناقص `CLASPRC_JSON` أو `SCRIPT_ID`، أو أول نشر ماخلصش. اعمل Run workflow تاني |
+| الكود مش بيوصل | دوّر في Spam، واتأكد إن الإيميل متضاف في Team ومعلّم Active |
 | زرار جوجل بيقول origin not allowed | اتأكد إن `https://crm.edenalkhalij.com` مكتوب بالظبط في Authorized JavaScript origins |
 | "has not been added to EDEN CRM" | الأدمن يضيف الإيميل من **Settings → Team** |
 | الموقع بيقول "did not answer" بعد النشر | اعمل خطوة 6 (setup والموافقة) |
