@@ -8,7 +8,7 @@ function visibleLeads_(u) {
 }
 
 function syncData_(u) {
-  return { leads: visibleLeads_(u), tasks: publicTasks_(u), units: publicUnits_(u), today: today_() };
+  return { leads: visibleLeads_(u), tasks: publicTasks_(u), units: publicUnits_(u), today: today_(), notifications: myNotifications_(u), targets: visibleTargets_(u) };
 }
 
 function projects_() {
@@ -28,6 +28,7 @@ function api_bootstrap() {
     consts: {
       stages: STAGES, sources: SOURCES, ratings: RATINGS, unitStatuses: UNIT_STATUSES, taskTypes: TASK_TYPES,
       lostReasons: LOST_REASONS, currencies: CURRENCIES, actLabel: ACT_LABEL,
+      payment: PAYMENT_OPTIONS, purpose: PURPOSE_OPTIONS, unitTypes: UNIT_TYPE_OPTIONS, maxFileMb: MAX_FILE_MB,
     },
   });
   if (isAdmin_(u)) out.admin = adminData_();
@@ -51,6 +52,7 @@ function api_getLead(id) {
   return {
     lead: publicLead_(l),
     activities: activitiesFor_(id),
+    files: filesFor_(id),
     tasks: publicTasks_(u).filter(function (t) { return t.leadId === id; }),
   };
 }
@@ -67,10 +69,16 @@ function api_saveLead(d) {
       if (!String(d.name || '').trim() && !String(d.phone || '').trim()) throw new Error('Enter at least a name or a phone number.');
       const data = Object.assign({}, d);
       if (!isManager_(u)) data.ownerEmail = u.email; // agents add leads for themselves
-      const r = createLead_(data, u.email, { force: !!d.force && isManager_(u) });
+      let canForce = isManager_(u);
+      if (d.force && !canForce) {
+        const k = phoneKey_(d.phone);
+        const dup = k && rows_('Leads').find(function (l) { return l.phoneKey === k; });
+        canForce = !!(dup && dup.ownerEmail === u.email);
+      }
+      const r = createLead_(data, u.email, { force: !!d.force && canForce });
       if (r.duplicate) {
         const dup = r.duplicate, vis = canSee_(u, dup);
-        return { duplicate: { id: vis ? dup.id : null, name: vis ? dup.name : '', ownerName: displayName_(dup.ownerEmail), canForce: isManager_(u) } };
+        return { duplicate: { id: vis ? dup.id : null, name: vis ? dup.name : '', ownerName: displayName_(dup.ownerEmail), canForce: isManager_(u) || dup.ownerEmail === u.email } };
       }
       return leadResult_(u, r.lead.id);
     }
@@ -105,6 +113,9 @@ function api_deleteLead(id) {
     if (lead) {
       releaseUnitsForLead_(id, u.email, 'lead deleted');
       rows_('Units').filter(function (x) { return x.leadId === id; }).forEach(function (x) { update_('Units', x, { leadId: '' }); });
+      const files = rows_('Files').filter(function (f) { return f.leadId === id; });
+      files.forEach(function (f) { try { DriveApp.getFileById(f.driveId).setTrashed(true); } catch (e) { /* gone */ } });
+      deleteRows_('Files', files);
       const tasks = rows_('Tasks').filter(function (t) { return t.leadId === id; });
       tasks.forEach(deleteTaskEvent_);
       deleteRows_('Tasks', tasks);

@@ -89,6 +89,7 @@ function createLead_(d, actor, opts) {
     slaAlertedAt: '', reassignCount: '0', externalId: d.externalId || '',
     rating: RATING_LABEL[d.rating] ? d.rating : '', tags: tagsNorm_(d.tags),
   };
+  PROFILE_FIELDS_.forEach(function (f) { lead[f] = String(d[f] || '').trim(); });
   const saved = insert_('Leads', lead);
   logAct_(lead.id, actor || 'system', 'created',
     (d.note ? d.note : '') + (opts.system ? (d.note ? '\n' : '') + 'Source: ' + srcLabel_(lead.source) + (lead.campaign ? ' · ' + lead.campaign : '') : ''));
@@ -100,7 +101,8 @@ function createLead_(d, actor, opts) {
   return { lead: saved };
 }
 
-const EDITABLE_FIELDS_ = ['name', 'phone', 'email', 'source', 'campaign', 'project', 'unit', 'budget', 'nextFollowUp', 'note', 'rating', 'tags'];
+const PROFILE_FIELDS_ = ['nationality', 'residence', 'occupation', 'unitType', 'sizeRange', 'payment', 'purpose', 'phone2'];
+const EDITABLE_FIELDS_ = ['name', 'phone', 'email', 'source', 'campaign', 'project', 'unit', 'budget', 'nextFollowUp', 'note', 'rating', 'tags'].concat(PROFILE_FIELDS_);
 
 function updateLeadFields_(lead, d, actor, canReassign) {
   const patch = { updatedAt: nowIso_() };

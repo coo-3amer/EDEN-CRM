@@ -6,6 +6,17 @@ Lead and sales CRM for EDEN Developments, built on Google Apps Script with a Goo
 
 ## What it does
 
+**Home dashboard** — month-to-date KPIs vs last month with sparklines, monthly targets with pace markers,
+new leads per day, open pipeline, lead sources, leaderboard, tasks due, "needs attention" list,
+recent team activity and an inventory snapshot. Managers can switch between the whole team and one agent.
+
+**Client profile** — tabs for Overview, Details (contact, interest, nationality, occupation, payment,
+purpose…), Activity timeline, Files (stored in Google Drive, up to 10 MB each) and Deals (every deal with
+the same client, lifetime value, open a new deal).
+
+**Calendar, notifications, targets** — month calendar of tasks and follow-ups, in-app notification bell,
+monthly targets per agent (sales value, deals, site visits). Sidebar layout with light and dark themes.
+
 **Leads and pipeline**
 - Pipeline board with drag and drop (New → Contacted → Qualified → Site visit → Negotiation → Won / Lost)
 - Lead rating (Hot / Warm / Cold), tags, search, filters, sorting

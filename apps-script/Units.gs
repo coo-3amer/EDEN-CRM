@@ -67,7 +67,7 @@ function expireReservations_() {
       mail_([lead && lead.ownerEmail, u.reservedBy].concat(managers_()), 'Reservation expired: ' + u.code,
         '<p>The reservation of unit <b>' + esc_(u.code) + '</b>' + (u.project ? ' (' + esc_(u.project) + ')' : '') +
         ' ended on ' + esc_(u.reservedUntil) + ' and the unit is available again.</p>' +
-        (lead ? '<p>Client: ' + leadLine_(lead) + '</p>' : ''));
+        (lead ? '<p>Client: ' + leadLine_(lead) + '</p>' : ''), { type: 'unit', leadId: lead ? lead.id : '', text: 'Reservation of ' + u.code + ' expired — the unit is available again' });
     });
 }
 

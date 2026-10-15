@@ -59,8 +59,16 @@
         base64EncodeWebSafe: (v) => b64(typeof v === 'string' ? utf8(v) : v).replace(/\+/g, '-').replace(/\//g, '_'),
         base64DecodeWebSafe: (s) => unb64(String(s).replace(/-/g, '+').replace(/_/g, '/')),
         computeHmacSha256Signature: (v, k) => hmac(v, k),
-        newBlob: (bytes) => ({ getDataAsString: () => fromUtf8(bytes) }),
+        newBlob: (bytes, mime, name) => ({ getDataAsString: () => fromUtf8(bytes), getBytes: () => bytes, getContentType: () => mime || 'application/octet-stream', getName: () => name }),
+        base64Decode: (s) => unb64(String(s)),
+        base64Encode: (b) => b64(Array.from(b)),
       },
+      DriveApp: (function () {
+        const files = st.drive = {}; let seq = 0;
+        const mk = (blob) => { const id = 'f' + (++seq); const f = { id, blob, trashed: false, desc: '', getId: () => id, getBlob: () => blob, setDescription(d) { f.desc = d; }, setTrashed(v) { f.trashed = v; } }; files[id] = f; return f; };
+        const folder = { getId: () => 'FOLDER', createFile: (blob) => mk(blob) };
+        return { createFolder: () => folder, getFolderById: () => folder, getFileById: (id) => { if (!files[id]) throw new Error('no file'); return files[id]; } };
+      })(),
       CacheService: { getScriptCache: () => ({ get: k => { const v = st.cache[k]; return v && v.exp > now() ? v.val : null; }, put: (k, v, s) => { st.cache[k] = { val: v, exp: now() + (s || 600) * 1000 }; }, remove: k => { delete st.cache[k]; } }) },
       ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ text: s, setMimeType() { return this; } }) },
       MailApp: { sendEmail: o => st.mails.push(o) },

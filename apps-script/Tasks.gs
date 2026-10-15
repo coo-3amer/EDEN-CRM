@@ -175,6 +175,6 @@ function remindTasks_() {
     mail_(t.ownerEmail, 'Reminder: ' + t.title + ' at ' + Utilities.formatDate(new Date(due), TZ, 'HH:mm'),
       '<p><b>' + esc_(TASK_LABEL[t.type] || 'Task') + '</b> — ' + esc_(t.title) + '</p>' +
       '<p>Due: ' + esc_(fmtDateTime_(new Date(due))) + '</p>' + (lead ? '<p>' + leadLine_(lead) + '</p>' : '') +
-      (t.notes ? '<p>' + esc_(t.notes) + '</p>' : ''));
+      (t.notes ? '<p>' + esc_(t.notes) + '</p>' : ''), { type: 'reminder', leadId: t.leadId, text: 'Soon: ' + t.title + ' at ' + Utilities.formatDate(new Date(due), TZ, 'HH:mm') });
   });
 }

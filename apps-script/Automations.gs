@@ -13,6 +13,7 @@ function runAutomations() {
     try { checkSla_(); } catch (e) { errors.push('First-contact check: ' + e.message); }
     try { remindTasks_(); } catch (e) { errors.push('Task reminders: ' + e.message); }
     try { expireReservations_(); } catch (e) { errors.push('Reservations: ' + e.message); }
+    try { pruneNotifications_(); } catch (e) { errors.push('Notifications: ' + e.message); }
   });
   props.setProperty('LAST_AUTOMATION_RUN', nowIso_());
   props.setProperty('LAST_AUTOMATION_ERROR', errors.join(' | '));
@@ -44,7 +45,7 @@ function checkSla_() {
           .forEach(function (t) { reassignTask_(t, to, updated); });
         notifyNewLead_(updated);
         mail_(from, 'Lead moved away from you: ' + (l.name || l.phone),
-          '<p>This lead was moved to a colleague because no contact was logged within ' + re + ' hours:</p><p>' + leadLine_(l) + '</p>');
+          '<p>This lead was moved to a colleague because no contact was logged within ' + re + ' hours:</p><p>' + leadLine_(l) + '</p>', { type: 'moved', leadId: l.id });
         forManagers.push({ l: updated, note: 'moved from ' + displayName_(from) + ' to ' + displayName_(to) });
         return;
       }
@@ -53,7 +54,7 @@ function checkSla_() {
       update_('Leads', leadById_(l.id), { slaAlertedAt: nowIso_() });
       mail_(l.ownerEmail, 'Lead waiting for your call: ' + (l.name || l.phone),
         '<p>This lead has been waiting more than ' + sla + ' hours with no logged contact:</p><p>' + leadLine_(l) + '</p>' +
-        (re ? '<p>If there is still no contact ' + re + ' hours after assignment, it will move to a colleague.</p>' : ''));
+        (re ? '<p>If there is still no contact ' + re + ' hours after assignment, it will move to a colleague.</p>' : ''), { type: 'sla', leadId: l.id });
       forManagers.push({ l: l, note: 'with ' + displayName_(l.ownerEmail) + ' for ' + Math.floor(age) + ' hours' });
     }
   });

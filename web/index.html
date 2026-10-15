@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
+  <script>try{var th=localStorage.getItem("crm.theme");if(th==="dark"||th==="light")document.documentElement.setAttribute("data-theme",th)}catch(e){}</script>
   <script src="config.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -37,31 +38,47 @@
     <p id="signin-msg" class="status" role="status"></p>
   </div>
 </div>
-<div id="app" hidden>
-  <header class="top">
-    <div class="top-in">
-      <div class="brand-row">
-        <div class="mark" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1.5c3 2.2 4.5 4.6 4.5 7.2A4.5 4.5 0 0 1 8 13.2a4.5 4.5 0 0 1-4.5-4.5C3.5 6.1 5 3.7 8 1.5Z" fill="var(--accent-fg)"/><path d="M8 14.5V7" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/></svg></div>
-        <div class="brand">EDEN CRM <small>Leads &amp; sales</small></div>
-        <div class="spacer"></div>
-        <button class="btn ghost icon" id="refresh-btn" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
-        <div class="me" id="me"></div>
+<div id="app" class="shell" hidden>
+  <aside class="side" id="side" aria-label="Main menu">
+    <div class="side-brand">
+      <div class="mark" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1.5c3 2.2 4.5 4.6 4.5 7.2A4.5 4.5 0 0 1 8 13.2a4.5 4.5 0 0 1-4.5-4.5C3.5 6.1 5 3.7 8 1.5Z" fill="#fff"/><path d="M8 14.5V7" stroke="#2E6B57" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+      <div>EDEN CRM<small>Leads &amp; sales</small></div>
+      <button class="side-x" id="side-x" aria-label="Close menu">✕</button>
+    </div>
+    <nav id="nav"></nav>
+    <div class="side-foot">
+      <div class="side-user" id="side-user"></div>
+      <div class="side-actions">
+        <button id="theme-btn" title="Switch light / dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><span>Theme</span></button>
+        <button id="signout-btn" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h12"/></svg><span>Sign out</span></button>
       </div>
-      <nav class="tabs" role="tablist" id="tabs"></nav>
     </div>
-  </header>
-  <div class="bar" id="bar" hidden>
-    <div class="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input type="search" id="q" placeholder="Search name, phone, unit or tag" autocomplete="off" dir="auto">
+  </aside>
+  <div class="nav-scrim" id="nav-scrim"></div>
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <h1 id="page-title">EDEN CRM</h1>
+      <span class="sub" id="page-sub"></span>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="refresh-btn" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+      <div class="notif-wrap" id="notif-wrap">
+        <button class="icon-btn" id="bell" aria-label="Notifications" aria-haspopup="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+      </div>
+      <button class="btn primary" id="add-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg><span>New lead</span></button>
+    </header>
+    <div class="bar" id="bar" hidden>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="q" placeholder="Search name, phone, unit or tag" autocomplete="off" dir="auto">
+      </div>
+      <select id="f-owner" aria-label="Owner"></select>
+      <select id="f-source" aria-label="Source"></select>
+      <select id="f-project" aria-label="Project"></select>
+      <select id="f-rating" aria-label="Rating"></select>
     </div>
-    <select id="f-owner" aria-label="Owner"></select>
-    <select id="f-source" aria-label="Source"></select>
-    <select id="f-project" aria-label="Project"></select>
-    <select id="f-rating" aria-label="Rating"></select>
-    <button class="btn primary" id="add-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>New lead</button>
+    <main id="view"><div class="skeleton">Loading EDEN CRM…</div></main>
   </div>
-  <main id="view"><div class="skeleton">Loading EDEN CRM…</div></main>
 </div>
 <div id="drawer-root"></div>
 <div id="toast-root"></div>

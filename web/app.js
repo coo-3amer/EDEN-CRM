@@ -3,9 +3,11 @@
 let ME = null, PEOPLE = [], PROJECTS = [], LEADS = [], TASKS = [], UNITS = [], C = null, ADMIN = null, TEMPLATES = [], CFG = {};
 const F = { q: '', owner: 'all', source: '', project: '', rating: '' };
 const IF = { q: '', project: '', status: '', type: '' };
-let tab = store('tab') || 'pipeline', period = 'all', sortBy = store('sort') || 'newest', actRange = store('actRange') || 'today';
+let tab = store('tab') || 'home', period = 'all', sortBy = store('sort') || 'newest', actRange = store('actRange') || 'today';
 let ACT = null, actLoading = false, TODAY = '', D = null, settingsDirty = false, selected = new Set(), INV = null;
 let SL = {}, SRC = {}, RL = {}, USL = {}, TTL = {};
+let NOTIF = { unread: 0, list: [] }, TARGETS = [], HOME = { act: null, feed: null, key: '', loading: false }, homeScope = '';
+let calMonth = '', calSel = '';
 const RW = { hot: 0, warm: 1, cold: 2 };
 
 /* ---------- utils ---------- */
@@ -138,30 +140,62 @@ function lateTask(t) { return t.status === 'open' && Date.parse(t.dueAt) < Date.
 /* ---------- render ---------- */
 let rq = 0;
 function render() { if (rq) return; rq = requestAnimationFrame(function () { rq = 0; doRender(); }); }
+const ICON = {
+  home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+  pipeline: '<rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  today: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  inventory: '<path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-6h6v6M9 11h.01M15 11h.01"/>',
+  reports: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
+  lead: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  call: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>',
+  chat: '<path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5Z"/>',
+  visit: '<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/>',
+  money: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a4 4 0 0 1-4 4M7 5H4v2a4 4 0 0 0 4 4"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
+  unit: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 15h.01M15 15h.01"/>',
+  task: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>',
+  bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>',
+};
+function icon(name) { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); s.innerHTML = ICON[name] || ICON.lead; return s; }
+const PAGES = { home: ['Home', 'home'], pipeline: ['Pipeline', 'pipeline'], list: ['Leads', 'list'], today: ['My day', 'today'], calendar: ['Calendar', 'calendar'], inventory: ['Inventory', 'inventory'], reports: ['Reports', 'reports'], settings: ['Settings', 'settings'] };
 function tabsList() {
-  const t = [['pipeline', 'Pipeline'], ['list', 'Leads'], ['today', 'Today'], ['inventory', 'Inventory'], ['reports', 'Reports']];
-  if (isMgr()) t.push(['settings', 'Settings']);
+  const t = ['home', 'pipeline', 'list', 'today', 'calendar', 'inventory', 'reports'];
+  if (isMgr()) t.push('settings');
   return t;
 }
+function go(k) { tab = k; store('tab', tab); settingsDirty = false; selected.clear(); $('app').classList.remove('nav-open'); window.scrollTo(0, 0); render(); }
 function doRender() {
   if (!ME) return;
-  if (!tabsList().some(function (t) { return t[0] === tab; })) tab = 'pipeline';
+  if (tabsList().indexOf(tab) < 0) tab = 'home';
   const mine = function (e) { return isMgr() ? ownerScope(e) : e === ME.email; };
   const late = TASKS.filter(function (t) { return lateTask(t) && mine(t.ownerEmail); }).length +
     LEADS.filter(function (l) { const f = fuInfo(l); return f && f.cls === 'late' && mine(l.ownerEmail); }).length;
-  put($('tabs'), tabsList().map(function (t) {
-    return h('button', { class: 'tab', role: 'tab', 'aria-selected': String(tab === t[0]), onclick: function () { tab = t[0]; store('tab', tab); settingsDirty = false; selected.clear(); render(); } },
-      t[1], t[0] === 'today' && late ? h('span', { class: 'tab-n' }, late) : null);
+  const groups = [['Work', ['home', 'pipeline', 'list', 'today', 'calendar']], ['Company', ['inventory', 'reports', 'settings']]];
+  put($('nav'), groups.map(function (g) {
+    const items = g[1].filter(function (k) { return tabsList().indexOf(k) >= 0; });
+    return [h('div', { class: 'nav-label' }, g[0]), items.map(function (k) {
+      return h('button', { class: 'nav-item', 'aria-current': tab === k ? 'page' : null, onclick: function () { go(k); } },
+        icon(PAGES[k][1]), h('span', {}, PAGES[k][0]), k === 'today' && late ? h('span', { class: 'nav-n' }, late) : null);
+    })];
   }));
-  put($('me'), [av(ME.email), h('span', { title: ME.email }, (ME.name || ME.email) + ' · ' + { admin: 'Admin', manager: 'Manager', sales: 'Sales' }[ME.role]),
-    h('button', { class: 'btn ghost', onclick: function () { EdenAuth.signOut(); } }, 'Sign out')]);
-  $('bar').hidden = ['pipeline', 'list', 'today'].indexOf(tab) < 0;
+  put($('side-user'), [av(ME.email), h('div', { style: 'min-width:0' }, h('b', { title: ME.email }, ME.name || ME.email), h('small', {}, { admin: 'Admin', manager: 'Manager', sales: 'Sales' }[ME.role]))]);
+  $('page-title').textContent = PAGES[tab][0];
+  $('page-sub').textContent = tab === 'home' ? new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()) : '';
+  renderBell();
+  $('bar').hidden = ['pipeline', 'list', 'today', 'calendar'].indexOf(tab) < 0;
   $('f-owner').hidden = !isMgr();
   renderFilters();
   const v = $('view');
   if (tab === 'settings') { if (!settingsDirty) put(v, viewSettings()); return; }
   if (tab === 'inventory') { const root = viewInventory(); if (v.firstChild !== root) put(v, root); return; }
   if (tab === 'reports') { put(v, viewReports(visible())); return; }
+  if (tab === 'home') { put(v, viewHome()); return; }
+  if (tab === 'calendar') { put(v, viewCalendar(visible())); return; }
   if (!LEADS.length) { put(v, welcome()); return; }
   const list = visible();
   put(v, tab === 'pipeline' ? viewPipeline(list) : tab === 'list' ? viewList(list) : viewToday(list));
@@ -587,7 +621,7 @@ function viewReports(all) {
 function dirty() { settingsDirty = true; }
 function viewSettings() {
   const wrap = h('div', { class: 'sets' });
-  wrap.append(projectsSec(), templatesSec(), importSec());
+  wrap.append(targetsSec(), projectsSec(), templatesSec(), importSec());
   if (isAdmin() && ADMIN) wrap.append(usersSec(), automationSec(), metaSec(), websiteSec());
   return wrap;
 }
@@ -806,28 +840,47 @@ function applySync(r) {
   if (r.tasks) TASKS = r.tasks;
   if (r.units) UNITS = r.units;
   if (r.today) TODAY = r.today;
-  if (r.detail && D && D.kind === 'lead' && D.id === r.detail.lead.id) D.acts = r.detail.activities;
+  if (r.notifications) NOTIF = r.notifications;
+  if (r.targets) TARGETS = r.targets;
+  if (r.detail && D && D.kind === 'lead' && D.id === r.detail.lead.id) { D.acts = r.detail.activities; if (r.detail.files) D.files = r.detail.files; }
+  HOME.feed = null;
   render(); refreshDrawer();
 }
 
-/* ---------- lead drawer ---------- */
-function openLead(id, pendingStage) {
+/* ---------- lead drawer (client profile) ---------- */
+const PTABS = [['overview', 'Overview'], ['details', 'Details'], ['activity', 'Activity'], ['files', 'Files'], ['deals', 'Deals']];
+function openLead(id, pendingStage, startTab) {
   const l = id === 'new' ? null : leadOf(id);
   if (id !== 'new' && !l) return;
-  const head = h('div', { class: 'd-head' });
+  const head = h('div', { class: l ? 'prof-head' : 'd-head' });
+  if (!l) {
+    const panel0 = openDrawer('New lead', head, h('div', { class: 'd-body' }, leadForm(null)));
+    panel0.classList.add('wide');
+    D = { kind: 'lead', id: 'new', panel: panel0, head: head };
+    D.refresh = refreshLead; refreshLead();
+    return;
+  }
+  const tabsEl = h('div', { class: 'ptabs', role: 'tablist' });
+  const panes = {};
   const live = h('div', { style: 'display:grid;gap:16px' });
+  const info = h('div', {});
   const unitHost = h('div', {});
   const tasksHost = h('div', {});
-  const logHost = h('div', {}, h('span', { class: 'lbl' }, 'Activity'), h('p', { class: 'loading-row' }, 'Loading…'));
-  const actBox = l ? activityBox(l) : null;
-  const body = h('div', { class: 'd-body' }, live,
-    l ? unitHost : null, l ? tasksHost : null, l ? taskForm(l) : null,
-    leadForm(l), actBox, l ? logHost : null, l && isAdmin() ? dangerZone(l) : null);
-  const panel = openDrawer(l ? (l.name || 'Lead') : 'New lead', head, body);
-  D = { kind: 'lead', id: id, panel: panel, head: head, live: live, unitHost: unitHost, tasksHost: tasksHost, logHost: logHost, pendingStage: pendingStage || null, acts: null, menu: false };
+  const logHost = h('div', {}, h('p', { class: 'loading-row' }, 'Loading…'));
+  const filesHost = h('div', {}, h('p', { class: 'loading-row' }, 'Loading…'));
+  const dealsHost = h('div', {});
+  panes.overview = h('div', { class: 'd-body' }, live, info, unitHost, tasksHost, taskForm(l), activityBox(l));
+  panes.details = h('div', { class: 'd-body' }, leadForm(l), isAdmin() ? dangerZone(l) : null);
+  panes.activity = h('div', { class: 'd-body' }, logHost);
+  panes.files = h('div', { class: 'd-body' }, filesHost);
+  panes.deals = h('div', { class: 'd-body' }, dealsHost);
+  const panel = openDrawer(l.name || 'Lead', h('div', { class: 'prof-top' }, head, tabsEl), h('div', {}, PTABS.map(function (p) { return panes[p[0]]; })));
+  panel.classList.add('wide');
+  D = { kind: 'lead', id: id, panel: panel, head: head, tabsEl: tabsEl, panes: panes, live: live, info: info, unitHost: unitHost, tasksHost: tasksHost,
+    logHost: logHost, filesHost: filesHost, dealsHost: dealsHost, pendingStage: pendingStage || null, acts: null, files: null, tab: startTab || 'overview' };
   D.refresh = refreshLead;
   refreshLead();
-  if (l) api('api_getLead', id).then(function (r) { if (!D || D.id !== id) return; D.acts = r.activities; refreshLead(); })
+  api('api_getLead', id).then(function (r) { if (!D || D.id !== id) return; D.acts = r.activities; D.files = r.files || []; refreshLead(); })
     .catch(function (e) { toast(errText(e), 'err'); });
 }
 function fillTpl(text, l) {
@@ -864,18 +917,33 @@ function refreshLead() {
   if (D.id === 'new') { put(D.head, [h('h2', {}, 'New lead'), closeBtn()]); return; }
   const l = leadOf(D.id);
   if (!l) { closeDrawer(); return; }
-  put(D.head, [h('h2', {}, l.name || 'No name', h('div', { class: 'sub' }, [SRC[l.source], l.campaign, l.project, isMgr() ? nm(l.ownerEmail) : null].filter(Boolean).join(' · '))), closeBtn()]);
+  const stage = l.stage || 'new';
+  // header
+  put(D.head, [
+    h('div', { class: 'prof-av', 'aria-hidden': 'true' }, String(l.name || l.phone || '?').trim().charAt(0).toUpperCase()),
+    h('div', { style: 'min-width:0' }, h('h2', {}, l.name || 'No name'),
+      h('div', { class: 'prof-chips' }, h('span', { class: 'stage-pill chip', style: 'background:var(--sunk);color:var(--fg)' }, h('span', { class: 'dot st-' + stage }), SL[stage]), ratingPill(l.rating), srcChip(l.source),
+        fuInfo(l) ? h('span', { class: 'fu ' + fuInfo(l).cls }, fuInfo(l).text) : null),
+      h('div', { class: 'prof-sub' }, [l.phone, l.project, isMgr() ? 'Owner: ' + nm(l.ownerEmail) : null, l.createdAt ? 'Since ' + df.format(new Date(l.createdAt)) : null].filter(Boolean).join(' · '))),
+    closeBtn()]);
+  const others = otherDeals(l);
+  put(D.tabsEl, PTABS.map(function (p) {
+    const n = p[0] === 'files' ? (D.files ? D.files.length : null) : p[0] === 'deals' ? others.length : p[0] === 'activity' ? (D.acts ? D.acts.length : null) : null;
+    return h('button', { class: 'ptab', role: 'tab', 'aria-selected': String(D.tab === p[0]), onclick: function () { D.tab = p[0]; refreshLead(); D.panel.scrollTop = 0; } },
+      p[1], n ? h('span', { class: 'count' }, n) : null);
+  }));
+  PTABS.forEach(function (p) { D.panes[p[0]].hidden = D.tab !== p[0]; });
+  // overview
   const contact = l.phone ? h('div', { class: 'contact' }, h('span', { class: 'phone ltr num' }, l.phone),
     waButton(l),
-    h('a', { class: 'btn', href: 'tel:' + l.phone }, 'Call'),
-    h('button', { class: 'btn ghost', onclick: function () { (navigator.clipboard ? navigator.clipboard.writeText(l.phone) : Promise.reject()).then(function () { toast('Number copied'); }, function () { toast('Select the number and copy it'); }); } }, 'Copy'),
-    l.email ? h('span', { class: 'meta', style: 'user-select:all' }, l.email) : null) : null;
+    h('a', { class: 'btn', href: 'tel:' + l.phone }, icon('call'), 'Call'),
+    l.email ? h('a', { class: 'btn', href: 'mailto:' + l.email }, 'Email') : null,
+    h('button', { class: 'btn ghost', onclick: function () { (navigator.clipboard ? navigator.clipboard.writeText(l.phone) : Promise.reject()).then(function () { toast('Number copied'); }, function () { toast('Select the number and copy it'); }); } }, 'Copy')) : null;
   const rate = h('div', { class: 'rate-row' }, h('span', { class: 'lbl', style: 'margin:0 6px 0 0' }, 'Rating'), C.ratings.map(function (r) {
     return h('button', { class: 'sbtn', 'aria-pressed': String(l.rating === r[0]), onclick: async function () {
       try { applySync(await api('api_saveLead', { id: l.id, rating: l.rating === r[0] ? '' : r[0] })); } catch (e) { toast(errText(e), 'err'); }
     } }, h('span', { class: 'rate rate-' + r[0], style: 'padding:0 6px' }, r[1]));
   }), tagList(l));
-  const stage = l.stage || 'new';
   const stages = h('div', {}, h('span', { class: 'lbl' }, 'Stage'), h('div', { class: 'stages' }, C.stages.map(function (s) {
     return h('button', { class: 'sbtn', 'aria-pressed': String(stage === s[0]), onclick: function () {
       if (stage === s[0]) return;
@@ -901,20 +969,105 @@ function refreshLead() {
       h('button', { class: 'btn ghost', onclick: function () { D.pendingStage = null; refreshLead(); } }, 'Cancel'));
   }
   put(D.live, [contact, rate, stages, sub]);
+  const facts = [['Project', l.project], ['Unit', l.unit], ['Budget', l.budget], ['Unit type', l.unitType], ['Size', l.sizeRange], ['Payment', l.payment],
+    ['Purpose', l.purpose], ['Nationality', l.nationality], ['Lives in', l.residence], ['Occupation', l.occupation], ['Second phone', l.phone2],
+    ['Campaign', l.campaign], ['First contact', l.firstContactAt ? dtf.format(new Date(l.firstContactAt)) : 'Not yet'],
+    ['Last contact', l.lastContactAt ? dtf.format(new Date(l.lastContactAt)) : '—'], ['Next follow-up', l.nextFollowUp ? fmtDay(l.nextFollowUp) : '—'],
+    l.stage === 'won' ? ['Deal value', money(l.dealValue, l.currency)] : null, l.stage === 'lost' ? ['Lost reason', l.lostReason] : null].filter(function (f) { return f && f[1]; });
+  put(D.info, [h('div', { class: 'box-h', style: 'margin-bottom:8px' }, h('span', { class: 'lbl', style: 'margin:0' }, 'Client profile'), h('span', { class: 'grow' }),
+      h('button', { class: 'link-btn', onclick: function () { D.tab = 'details'; refreshLead(); } }, 'Edit')),
+    h('div', { class: 'info-grid' }, facts.map(function (f) { return h('div', {}, h('span', {}, f[0]), h('b', {}, f[1])); }))]);
   put(D.unitHost, unitBox(l));
   const open = TASKS.filter(function (t) { return t.leadId === l.id && t.status === 'open'; }).sort(function (a, b) { return a.dueAt < b.dueAt ? -1 : 1; });
   put(D.tasksHost, [h('span', { class: 'lbl' }, 'Tasks'), open.length ? h('div', { class: 'task-list' }, open.map(function (t) { return taskRow(t, { inLead: true }); })) : h('p', { class: 'meta', style: 'margin:0' }, 'No open tasks.')]);
+  // activity
   if (D.acts) {
     const A = C.actLabel;
-    put(D.logHost, [h('span', { class: 'lbl' }, 'Activity'), D.acts.length ? h('div', { class: 'log' }, D.acts.slice().reverse().map(function (a) {
-      let what = a.text || '';
-      if (a.type === 'stage') what = (SL[a.fromVal] || '') + ' → ' + (SL[a.toVal] || '') + (a.text ? '\n' + a.text : '');
-      if (a.type === 'assign') what = (a.toVal ? 'to ' + nm(a.toVal) : 'owner removed') + (a.text ? '\n' + a.text : '');
-      return h('div', { class: 'ev' + (a.type === 'stage' ? ' stage' : '') },
-        h('div', { class: 'who' }, nm(a.by) + ' · ' + (a.at ? dtf.format(new Date(a.at)) : '')),
-        h('div', { class: 'what', dir: 'auto' }, h('span', { class: 'tag', style: 'border:0;padding:0;font-weight:600;color:var(--fg);font-size:13px;margin-right:6px' }, A[a.type] || a.type), what));
-    })) : h('p', { class: 'meta' }, 'No activity yet.')]);
+    put(D.logHost, [h('div', { class: 'box-h', style: 'margin-bottom:10px' }, h('span', { class: 'lbl', style: 'margin:0' }, 'Timeline'), h('span', { class: 'grow' }),
+        h('span', { class: 'meta' }, D.acts.length + ' entries')),
+      D.acts.length ? h('div', { class: 'log' }, D.acts.slice().reverse().map(function (a) {
+        let what = a.text || '';
+        if (a.type === 'stage') what = (SL[a.fromVal] || '') + ' → ' + (SL[a.toVal] || '') + (a.text ? '\n' + a.text : '');
+        if (a.type === 'assign') what = (a.toVal ? 'to ' + nm(a.toVal) : 'owner removed') + (a.text ? '\n' + a.text : '');
+        return h('div', { class: 'ev' + (a.type === 'stage' ? ' stage' : '') },
+          h('div', { class: 'who' }, nm(a.by) + ' · ' + (a.at ? dtf.format(new Date(a.at)) : '')),
+          h('div', { class: 'what', dir: 'auto' }, h('span', { class: 'tag', style: 'border:0;padding:0;font-weight:600;color:var(--fg);font-size:13px;margin-right:6px' }, A[a.type] || a.type), what));
+      })) : h('p', { class: 'meta' }, 'No activity yet.')]);
   }
+  if (D.files) put(D.filesHost, filesPane(l));
+  put(D.dealsHost, dealsPane(l, others));
+}
+function otherDeals(l) {
+  const k = waNum(l.phone);
+  return k ? LEADS.filter(function (x) { return x.id !== l.id && waNum(x.phone) === k; }) : [];
+}
+function fmtSize(n) { n = Number(n) || 0; return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+function filesPane(l) {
+  const input = h('input', { type: 'file', id: 'file-in', multiple: true, hidden: true });
+  const status = h('p', { class: 'status', style: 'margin:0' });
+  const upload = async function (list) {
+    for (const f of Array.from(list || [])) {
+      if (f.size > (C.maxFileMb || 10) * 1048576) { toast(f.name + ' is larger than ' + (C.maxFileMb || 10) + ' MB', 'err'); continue; }
+      status.textContent = 'Uploading ' + f.name + '…';
+      try {
+        const b64 = await new Promise(function (res, rej) { const r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1] || ''); }; r.onerror = rej; r.readAsDataURL(f); });
+        const r = await api('api_uploadFile', l.id, f.name, f.type || 'application/octet-stream', b64);
+        if (D && D.id === l.id) { D.files = r.files; D.acts = r.detail.activities; }
+        toast('Uploaded ' + f.name);
+      } catch (e) { toast(errText(e), 'err'); }
+    }
+    status.textContent = '';
+    refreshLead();
+  };
+  input.addEventListener('change', function () { upload(input.files); });
+  const drop = h('div', { class: 'drop' }, h('b', {}, 'Drop files here'), h('span', { class: 'meta' }, 'ID copies, contracts, payment receipts, floor plans — up to ' + (C.maxFileMb || 10) + ' MB each'),
+    h('button', { class: 'btn', onclick: function () { input.click(); } }, 'Choose files'), input, status);
+  drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', function () { drop.classList.remove('over'); });
+  drop.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('over'); upload(e.dataTransfer.files); });
+  const ext = function (n) { const m = String(n).match(/\.([a-z0-9]{1,4})$/i); return m ? m[1] : 'file'; };
+  return [drop, D.files.length ? h('div', { class: 'files' }, D.files.map(function (f) {
+    const del = (isMgr() || f.by === ME.email) ? h('button', { class: 'x', title: 'Delete', onclick: async function (e) {
+      if (!confirmStep(e.currentTarget, 'Click again to delete ' + f.name)) return;
+      try { const r = await api('api_deleteFile', f.id); D.files = r.files; D.acts = r.detail.activities; refreshLead(); toast('Deleted'); } catch (er) { toast(errText(er), 'err'); }
+    } }, '✕') : null;
+    return h('div', { class: 'file-row' }, h('div', { class: 'fic' }, ext(f.name)),
+      h('div', { style: 'min-width:0' }, h('b', {}, f.name), h('small', {}, fmtSize(f.size) + ' · ' + (f.byName || nm(f.by)) + ' · ' + df.format(new Date(f.at)))),
+      h('div', { style: 'display:flex;gap:4px' }, h('button', { class: 'btn', onclick: async function (e) {
+        const b = e.currentTarget; b.disabled = true;
+        try {
+          const r = await api('api_getFile', f.id);
+          const bin = atob(r.base64); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          const url = URL.createObjectURL(new Blob([arr], { type: r.mime }));
+          const a = h('a', { href: url, download: r.name }); document.body.append(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 8000);
+        } catch (er) { toast(errText(er), 'err'); }
+        b.disabled = false;
+      } }, 'Download'), del));
+  })) : h('p', { class: 'meta', style: 'margin:0' }, 'No files yet.')];
+}
+function dealsPane(l, others) {
+  const btn = h('button', { class: 'btn primary' }, '+ New deal for this client');
+  btn.addEventListener('click', async function () {
+    btn.disabled = true;
+    try {
+      const d = { name: l.name, phone: l.phone, email: l.email, source: 'referral', force: true, note: 'New deal for an existing client', rating: l.rating };
+      ['nationality', 'residence', 'occupation', 'phone2', 'payment', 'purpose'].forEach(function (k) { d[k] = l[k] || ''; });
+      if (isMgr()) d.ownerEmail = l.ownerEmail;
+      const r = await api('api_saveLead', d);
+      if (r.duplicate) throw new Error('Only the client\'s agent or a manager can open a new deal for them.');
+      applySync(r); toast('New deal opened'); openLead(r.detail.lead.id, null, 'details');
+    } catch (e) { toast(errText(e), 'err'); btn.disabled = false; }
+  });
+  const all = [l].concat(others).sort(function (a, b) { return (b.createdAt || '') < (a.createdAt || '') ? -1 : 1; });
+  const wonVal = {}; all.forEach(function (x) { if (x.stage === 'won' && Number(x.dealValue)) { const c = x.currency || 'EGP'; wonVal[c] = (wonVal[c] || 0) + Number(x.dealValue); } });
+  return [h('div', { class: 'box-h' }, h('span', { class: 'lbl', style: 'margin:0' }, 'All deals with this client'), h('span', { class: 'grow' }), btn),
+    Object.keys(wonVal).length ? h('p', { class: 'meta', style: 'margin:0' }, 'Lifetime value: ' + Object.keys(wonVal).map(function (c) { return money(wonVal[c], c); }).join(' · ')) : null,
+    h('div', { class: 'task-list' }, all.map(function (x) {
+      return h('div', { class: 'deal-row', onclick: function () { if (x.id !== l.id) openLead(x.id); } },
+        h('div', { style: 'min-width:0' }, h('b', {}, [x.project || 'No project', x.unit].filter(Boolean).join(' · ') + (x.id === l.id ? ' (this deal)' : '')),
+          h('div', { class: 'meta' }, 'Opened ' + (x.createdAt ? df.format(new Date(x.createdAt)) : '—') + ' · ' + nm(x.ownerEmail))),
+        h('span', { class: 'stage-pill' }, h('span', { class: 'dot st-' + (x.stage || 'new') }), SL[x.stage || 'new'], x.stage === 'won' && x.dealValue ? ' · ' + money(x.dealValue, x.currency) : ''));
+    }))];
 }
 function unitBox(l) {
   const u = unitOf(l.unit);
@@ -1022,6 +1175,11 @@ function leadForm(l) {
     owner.value = isNew ? 'auto' : (x.ownerEmail || '');
   }
   const fu = h('input', { type: 'date', id: 'f-fu', value: x.nextFollowUp || '' });
+  const pf = {};
+  const txt = function (k, ph, list) { pf[k] = h('input', { type: 'text', id: 'f-' + k, value: x[k] || '', placeholder: ph || '', dir: 'auto', list: list || null }); return pf[k]; };
+  const sel = function (k, opts) { pf[k] = h('select', { id: 'f-' + k }, h('option', { value: '' }, '—'), opts.map(function (o) { return h('option', { value: o, selected: x[k] === o }, o); })); if (x[k] && opts.indexOf(x[k]) < 0) pf[k].append(h('option', { value: x[k], selected: true }, x[k])); return pf[k]; };
+  const unitTypes = (C.unitTypes || []).slice(); UNITS.forEach(function (u) { if (u.type && unitTypes.indexOf(u.type) < 0) unitTypes.push(u.type); });
+  const natDl = h('datalist', { id: 'nat-dl' }, ['Egyptian', 'Saudi', 'Emirati', 'Kuwaiti', 'Qatari', 'Jordanian', 'Lebanese', 'Iraqi', 'Libyan', 'Georgian', 'Russian', 'Ukrainian', 'Turkish', 'Israeli', 'Iranian', 'Indian', 'British', 'German', 'American'].map(function (n) { return h('option', { value: n }); }));
   const note = isNew ? h('textarea', { id: 'f-note', rows: 3, dir: 'auto', placeholder: 'First contact, what they are looking for, any details' }) : null;
   const warn = h('div', {});
   const save = h('button', { class: 'btn primary' }, isNew ? 'Add lead' : 'Save changes');
@@ -1029,6 +1187,7 @@ function leadForm(l) {
   save.addEventListener('click', async function () {
     const d = { id: isNew ? null : l.id, name: name.value.trim(), phone: phone.value.trim(), email: email.value.trim(), source: source.value,
       project: project.value, unit: unit.value.trim(), budget: budget.value.trim(), tags: tags.value, rating: rating.value, nextFollowUp: fu.value || '' };
+    Object.keys(pf).forEach(function (k) { d[k] = pf[k].value.trim(); });
     if (!d.name && !d.phone) { toast('Enter at least a name or a phone number', 'err'); return; }
     if (owner) d.ownerEmail = owner.value;
     if (isNew) { d.note = note.value.trim(); d.force = force; }
@@ -1048,11 +1207,20 @@ function leadForm(l) {
       if (isNew) openLead(r.detail.lead.id); else save.disabled = false;
     } catch (e) { toast(errText(e), 'err'); save.disabled = false; }
   });
-  return h('div', {}, h('span', { class: 'lbl' }, isNew ? 'Lead details' : 'Details'),
+  return h('div', {},
     h('div', { class: 'form' },
-      field('Name', 'f-name', name), field('Phone', 'f-phone', phone), field('Source', 'f-src', source), field('Email', 'f-email', email),
-      field('Project', 'f-proj', project), field('Unit', 'f-unit', h('div', {}, unit, dl)), field('Budget', 'f-budget', budget), field('Rating', 'f-rating', rating),
+      h('div', { class: 'form-sec' }, 'Contact'),
+      field('Name', 'f-name', name), field('Phone', 'f-phone', phone), field('Second phone', 'f-phone2', txt('phone2', 'Optional')), field('Email', 'f-email', email),
+      h('div', { class: 'form-sec' }, 'What they want'),
+      field('Project', 'f-proj', project), field('Unit', 'f-unit', h('div', {}, unit, dl)),
+      field('Unit type', 'f-unitType', sel('unitType', unitTypes)), field('Size', 'f-sizeRange', txt('sizeRange', 'e.g. 40–60 m², 2 bedrooms')),
+      field('Budget', 'f-budget', budget), field('Payment', 'f-payment', sel('payment', C.payment || [])),
+      field('Purpose', 'f-purpose', sel('purpose', C.purpose || [])), field('Rating', 'f-rating', rating),
+      h('div', { class: 'form-sec' }, 'About the client'),
+      field('Nationality', 'f-nationality', h('div', {}, txt('nationality', 'e.g. Egyptian', 'nat-dl'), natDl)), field('Lives in', 'f-residence', txt('residence', 'City / country')),
+      field('Occupation', 'f-occupation', txt('occupation', 'Job or company')), field('Source', 'f-src', source),
       field('Tags (comma separated)', 'f-tags', tags, true),
+      h('div', { class: 'form-sec' }, 'Follow-up'),
       owner ? field('Owner', 'f-owner-sel', owner) : field('Owner', 'f-owner-ro', h('div', { id: 'f-owner-ro', style: 'padding:8px 0' }, isNew ? 'Me' : nm(x.ownerEmail))),
       field('Next follow-up', 'f-fu', fu), note ? field('Note', 'f-note', note, true) : null,
       h('div', { class: 'full' }, warn), h('div', { class: 'full acts' }, save)));
@@ -1211,6 +1379,378 @@ function openUnitImport() {
   D = { kind: 'import' };
 }
 
+/* ---------- theme ---------- */
+function isDark() { const a = document.documentElement.getAttribute('data-theme'); return a ? a === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches; }
+function toggleTheme() { const next = isDark() ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', next); store('theme', next); }
+
+/* ---------- tooltip ---------- */
+let TIP = null;
+function tipShow(e, text) {
+  if (!TIP) { TIP = h('div', { class: 'tip', role: 'tooltip' }); document.body.append(TIP); }
+  TIP.textContent = text; TIP.hidden = false;
+  const x = Math.max(8, Math.min(window.innerWidth - TIP.offsetWidth - 8, e.clientX - TIP.offsetWidth / 2));
+  TIP.style.left = x + 'px'; TIP.style.top = Math.max(8, e.clientY - TIP.offsetHeight - 12) + 'px';
+}
+function tipHide() { if (TIP) TIP.hidden = true; }
+function rel(iso) {
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  if (s < 7 * 86400) return Math.floor(s / 86400) + 'd ago'; return df.format(new Date(iso));
+}
+
+/* ---------- notifications ---------- */
+const NICON = { lead: 'lead', unassigned: 'lead', returning: 'lead', moved: 'lead', won: 'trophy', unit: 'unit', task: 'task', reminder: 'clock', sla: 'clock' };
+function renderBell() {
+  const b = $('bell'); const old = b.querySelector('.dot-n'); if (old) old.remove();
+  if (NOTIF.unread) b.append(h('span', { class: 'dot-n' }, NOTIF.unread > 99 ? '99+' : NOTIF.unread));
+  b.setAttribute('aria-label', 'Notifications' + (NOTIF.unread ? ' (' + NOTIF.unread + ' unread)' : ''));
+  const p = $('notif-wrap').querySelector('.notif-panel'); if (p) fillNotif(p);
+}
+function notifOutside(e) { if (!$('notif-wrap').contains(e.target)) closeNotif(); }
+function closeNotif() { const p = $('notif-wrap').querySelector('.notif-panel'); if (p) p.remove(); document.removeEventListener('click', notifOutside, true); }
+function toggleNotif() {
+  if ($('notif-wrap').querySelector('.notif-panel')) { closeNotif(); return; }
+  const panel = h('div', { class: 'notif-panel', role: 'dialog', 'aria-label': 'Notifications' });
+  fillNotif(panel); $('notif-wrap').append(panel);
+  setTimeout(function () { document.addEventListener('click', notifOutside, true); });
+}
+function fillNotif(panel) {
+  put(panel, [h('div', { class: 'notif-head' }, h('b', {}, 'Notifications'),
+    NOTIF.unread ? h('button', { class: 'link-btn', onclick: async function () { try { NOTIF = await api('api_markRead', 'all'); renderBell(); } catch (er) { toast(errText(er), 'err'); } } }, 'Mark all read') : null),
+  NOTIF.list.length ? NOTIF.list.map(function (n) {
+    return h('button', { class: 'notif-item' + (n.read ? '' : ' unread'), onclick: async function () {
+      closeNotif(); if (n.leadId) openLead(n.leadId);
+      if (!n.read) { try { NOTIF = await api('api_markRead', [n.id]); renderBell(); } catch (er) { /* ignore */ } }
+    } }, h('span', { class: 'ni' }, icon(NICON[n.type] || 'bell')), h('span', {}, h('p', { dir: 'auto' }, n.text), h('small', {}, rel(n.at))));
+  }) : h('div', { class: 'notif-empty' }, 'You\'re all caught up.')]);
+}
+
+/* ---------- home ---------- */
+function monthBounds(offset) {
+  const b = new Date(TODAY + 'T12:00:00Z');
+  const s = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + offset, 1));
+  const e = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + offset + 1, 0));
+  return [s.toISOString().slice(0, 10), e.toISOString().slice(0, 10)];
+}
+const monthName = function (ym) { return new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(ym + '-15T12:00:00Z')); };
+function ymdOf(iso) { return iso ? localYmd(new Date(iso)) : ''; }
+function inR(iso, a, b) { const d = ymdOf(iso); return !!d && d >= a && d <= b; }
+function sumVal(arr) { const o = {}; arr.forEach(function (l) { if (Number(l.dealValue)) { const c = l.currency || 'EGP'; o[c] = (o[c] || 0) + Number(l.dealValue); } }); return o; }
+function compact(n) { n = Number(n) || 0; if (Math.abs(n) >= 1e6) return (Math.round(n / 1e5) / 10) + 'M'; if (Math.abs(n) >= 1e4) return Math.round(n / 1e3) + 'K'; return nf.format(Math.round(n)); }
+function homeLoad() {
+  const m = monthBounds(0); const key = m[0] + '|' + TODAY;
+  if (HOME.loading || (HOME.act && HOME.feed && HOME.key === key)) return;
+  HOME.loading = true;
+  Promise.all([HOME.act && HOME.key === key ? HOME.act : api('api_activityReport', m[0], TODAY), HOME.feed || api('api_feed', 30)])
+    .then(function (r) { HOME.act = r[0]; HOME.feed = r[1]; }, function () { HOME.act = HOME.act || { rows: [], days: [] }; HOME.feed = HOME.feed || []; })
+    .then(function () { HOME.key = key; HOME.loading = false; if (tab === 'home') render(); });
+}
+function deltaChip(now, prev) {
+  if (!prev && !now) return h('span', { class: 'delta flat' }, '—');
+  if (!prev) return h('span', { class: 'delta up' }, 'New');
+  const p = Math.round((now - prev) / prev * 100);
+  return h('span', { class: 'delta ' + (p > 0 ? 'up' : p < 0 ? 'down' : 'flat') }, (p > 0 ? '▲ ' : p < 0 ? '▼ ' : '') + Math.abs(p) + '%');
+}
+function sparkline(vals) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('viewBox', '0 0 100 30'); svg.setAttribute('preserveAspectRatio', 'none'); svg.setAttribute('class', 'spark'); svg.setAttribute('aria-hidden', 'true');
+  const max = Math.max.apply(null, [1].concat(vals));
+  const pts = vals.map(function (v, i) { return [(i / Math.max(1, vals.length - 1)) * 100, 28 - (v / max) * 25]; });
+  const area = document.createElementNS(ns, 'path');
+  area.setAttribute('d', 'M0,30 ' + pts.map(function (p) { return 'L' + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ') + ' L100,30 Z');
+  area.setAttribute('fill', 'var(--accent)'); area.setAttribute('opacity', '.1');
+  const line = document.createElementNS(ns, 'polyline');
+  line.setAttribute('points', pts.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' '));
+  line.setAttribute('fill', 'none'); line.setAttribute('stroke', 'var(--accent)'); line.setAttribute('stroke-width', '2'); line.setAttribute('vector-effect', 'non-scaling-stroke'); line.setAttribute('stroke-linejoin', 'round');
+  svg.append(area, line);
+  return svg;
+}
+function tile(ic, label, value, unit, sub, spark) {
+  return h('div', { class: 'tile' }, h('div', { class: 't-l' }, icon(ic), label), h('div', { class: 't-v' }, value, unit ? h('small', {}, unit) : null),
+    sub ? h('div', { class: 't-s' }, sub) : null, spark ? sparkline(spark) : null);
+}
+function goalRow(label, actual, target, fmt, pace) {
+  if (!target) return h('div', { class: 'goal' }, h('div', { class: 'goal-top' }, h('span', {}, label), h('b', {}, fmt(actual)), h('span', { class: 'of' }, 'no target set')));
+  const pct = Math.round(actual / target * 100);
+  const ahead = pct / 100 >= pace;
+  const left = Math.max(0, target - actual);
+  return h('div', { class: 'goal' },
+    h('div', { class: 'goal-top' }, h('span', {}, label), h('b', {}, fmt(actual)), h('span', { class: 'of' }, 'of ' + fmt(target)), h('span', { class: 'pct' }, pct + '%')),
+    h('div', { class: 'meter', role: 'img', 'aria-label': label + ' ' + pct + '% of target' }, h('i', { style: 'width:' + Math.min(100, pct) + '%;background:' + (pct >= 100 ? 'var(--ok)' : 'var(--accent)') }), h('span', { class: 'pace', style: 'left:' + (pace * 100) + '%', title: 'Where you should be today' })),
+    h('div', { class: 'goal-note ' + (pct >= 100 ? 'ahead' : ahead ? 'ahead' : 'behind') }, pct >= 100 ? 'Target reached' : (ahead ? 'On pace' : 'Behind pace') + ' · ' + fmt(left) + ' to go'));
+}
+function colChart(days, vals, label) {
+  const max = Math.max(4, Math.max.apply(null, vals));
+  const step = Math.ceil(max / 4); const top = step * 4;
+  const plot = h('div', { class: 'cols-plot' }, [1, 2, 3].map(function (i) { return h('span', { class: 'gl', style: 'bottom:' + (i * 25) + '%' }); }),
+    vals.map(function (v, i) {
+      const c = h('div', { class: 'c' + (days[i] === TODAY ? ' today' : ''), tabIndex: 0, 'aria-label': fmtDay(days[i]) + ': ' + v + ' ' + label },
+        h('i', { style: 'height:' + (v / top * 100) + '%' }));
+      c.addEventListener('mousemove', function (e) { tipShow(e, fmtDay(days[i]) + ' · ' + v + ' ' + label); });
+      c.addEventListener('mouseleave', tipHide);
+      return c;
+    }));
+  return h('div', { class: 'cols' }, h('div', { class: 'cols-y' }, [4, 3, 2, 1, 0].map(function (i) { return h('span', {}, step * i); })), plot,
+    h('div', { class: 'cols-x' }, h('span', {}, fmtDay(days[0])), h('span', {}, fmtDay(days[Math.floor(days.length / 2)])), h('span', {}, 'Today')));
+}
+function barList(rows, color) {
+  const max = Math.max.apply(null, [1].concat(rows.map(function (r) { return r.n; })));
+  return h('div', { class: 'bars' }, rows.map(function (r) {
+    return h('div', { class: 'bar-row' }, h('span', { class: 'lab' }, r.dot ? h('span', { class: 'dot ' + r.dot }) : null, r.label),
+      h('div', { class: 'trk' }, h('i', { style: 'width:' + (r.n / max * 100) + '%;background:' + (r.color || color || 'var(--accent)') })), h('span', { class: 'v' }, r.v != null ? r.v : r.n));
+  }));
+}
+const VERB = { call: 'called', whatsapp: 'sent a WhatsApp to', visit: 'did a site visit with', meeting: 'met', note: 'added a note on', created: 'added', assign: 'assigned', unit: 'updated the unit for', task: 'scheduled a task for', system: 'updated' };
+function feedText(a) {
+  if (a.type === 'stage') return [h('b', {}, nm(a.by)), ' moved ', h('b', {}, a.leadName), ' to ' + (SL[a.toVal] || a.toVal)];
+  if (a.type === 'assign') return [h('b', {}, nm(a.by)), ' assigned ', h('b', {}, a.leadName), a.toVal ? ' to ' + nm(a.toVal) : ''];
+  return [h('b', {}, nm(a.by)), ' ' + (VERB[a.type] || 'updated') + ' ', h('b', {}, a.leadName)];
+}
+const FICON = { call: 'call', whatsapp: 'chat', visit: 'visit', meeting: 'lead', stage: 'pipeline', assign: 'lead', unit: 'unit', task: 'task', created: 'bolt', note: 'list', system: 'bell' };
+function onboarding() {
+  if (!isAdmin()) return null;
+  const tm = TODAY.slice(0, 7);
+  const steps = [
+    ['Add your projects', PROJECTS.length > 0, function () { go('settings'); }],
+    ['Add units and prices to the inventory', UNITS.length > 0, function () { go('inventory'); }],
+    ['Add your sales team', PEOPLE.length > 1, function () { go('settings'); }],
+    ['Set this month\'s targets', TARGETS.some(function (t) { return t.month === tm; }), function () { go('settings'); }],
+    ['Add or import your first leads', LEADS.length > 0, function () { openLead('new'); }],
+  ];
+  const done = steps.filter(function (s) { return s[1]; }).length;
+  if (done === steps.length) return null;
+  return h('div', { class: 'box span-12' }, h('div', { class: 'box-h' }, h('h3', {}, 'Get EDEN CRM ready'), h('span', { class: 'meta' }, done + ' of ' + steps.length + ' done')),
+    h('div', { class: 'meter' }, h('i', { style: 'width:' + (done / steps.length * 100) + '%' })),
+    h('div', { class: 'check-list' }, steps.map(function (s) {
+      return h('div', { class: 'check-item' + (s[1] ? ' done' : '') }, h('span', { class: 'ci' }, s[1] ? '✓' : ''), h('span', {}, s[0]), s[1] ? null : h('button', { class: 'btn', onclick: s[2] }, 'Start'));
+    })));
+}
+function viewHome() {
+  homeLoad();
+  const mgr = isMgr();
+  if (!homeScope) homeScope = mgr ? 'all' : ME.email;
+  const inScope = function (e) { return homeScope === 'all' || e === homeScope; };
+  const leads = LEADS.filter(function (l) { return inScope(l.ownerEmail); });
+  const m0 = monthBounds(0), m1 = monthBounds(-1);
+  const dayN = Number(TODAY.slice(8, 10)), dim = Number(m0[1].slice(8, 10)), pace = dayN / dim;
+  const m1cut = addDays(m1[0], dayN - 1) > m1[1] ? m1[1] : addDays(m1[0], dayN - 1);
+  const created = function (a, b) { return leads.filter(function (l) { return inR(l.createdAt, a, b); }); };
+  const wonIn = function (a, b) { return leads.filter(function (l) { return l.stage === 'won' && inR(l.stageAt, a, b); }); };
+  const newNow = created(m0[0], TODAY), newPrev = created(m1[0], m1cut);
+  const wonNow = wonIn(m0[0], TODAY), wonPrev = wonIn(m1[0], m1cut);
+  const valNow = sumVal(wonNow), valPrev = sumVal(wonPrev);
+  const contactedPct = newNow.length ? Math.round(newNow.filter(function (l) { return l.firstContactAt; }).length / newNow.length * 100) : 0;
+  const resp = leads.filter(function (l) { return l.firstContactAt && l.assignedAt && inR(l.firstContactAt, m0[0], TODAY); })
+    .map(function (l) { return (Date.parse(l.firstContactAt) - Date.parse(l.assignedAt)) / 36e5; }).filter(function (x) { return x >= 0; });
+  const avgResp = resp.length ? resp.reduce(function (a, b) { return a + b; }, 0) / resp.length : null;
+  const actRows = HOME.act ? HOME.act.rows.filter(function (r) { return homeScope === 'all' || r.email === homeScope; }) : null;
+  const sumAct = function (k) { return actRows ? actRows.reduce(function (a, r) { return a + (r[k] || 0); }, 0) : null; };
+  const visits = sumAct('visit'), calls = actRows ? sumAct('call') + sumAct('whatsapp') : null;
+  const days = []; for (let i = 29; i >= 0; i--) days.push(addDays(TODAY, -i));
+  const perDay = days.map(function (d) { return leads.filter(function (l) { return ymdOf(l.createdAt) === d; }).length; });
+  const wonDay = days.map(function (d) { return wonIn(d, d).length; });
+  const otherCur = Object.keys(valNow).filter(function (c) { return c !== 'EGP'; }).map(function (c) { return money(valNow[c], c); }).join(' · ');
+  const hr = new Date().getHours();
+  const first = String(ME.name || '').trim().split(/\s+/)[0];
+
+  const scopeSel = mgr ? h('select', { class: 'scope-sel', id: 'home-scope', 'aria-label': 'Show numbers for', onchange: function (e) { homeScope = e.target.value; render(); } },
+    h('option', { value: 'all' }, 'Whole team'), PEOPLE.map(function (p) { return h('option', { value: p.email, selected: homeScope === p.email }, nm(p.email)); })) : null;
+  if (scopeSel) scopeSel.value = homeScope;
+
+  // targets
+  const tm = TODAY.slice(0, 7);
+  const tg = TARGETS.filter(function (t) { return t.month === tm && (homeScope === 'all' || t.email === homeScope); });
+  const tSum = function (k) { return tg.reduce(function (a, t) { return a + (t[k] || 0); }, 0); };
+  const money0 = function (v) { return compact(v) + ' EGP'; };
+  const goals = h('div', { class: 'box span-5' }, h('div', { class: 'box-h' }, h('h3', {}, 'Targets · ' + monthName(tm)), h('span', { class: 'grow' }),
+      mgr ? h('button', { class: 'link-btn', onclick: function () { go('settings'); } }, 'Set targets') : null),
+    goalRow('Sales value', valNow.EGP || 0, tSum('salesTarget'), money0, pace),
+    goalRow('Deals closed', wonNow.length, tSum('dealsTarget'), function (v) { return nf.format(v); }, pace),
+    goalRow('Site visits', visits || 0, tSum('visitsTarget'), function (v) { return nf.format(v); }, pace),
+    h('p', { class: 'meta', style: 'margin:0' }, 'Day ' + dayN + ' of ' + dim + '. The thin mark shows where you should be today.' + (otherCur ? ' Also sold: ' + otherCur + '.' : '')));
+
+  const chart = h('div', { class: 'box span-7' }, h('div', { class: 'box-h' }, h('h3', {}, 'New leads per day'), h('span', { class: 'grow' }), h('span', { class: 'meta' }, 'Last 30 days · ' + perDay.reduce(function (a, b) { return a + b; }, 0) + ' leads')),
+    colChart(days, perDay, 'new leads'));
+
+  // my day
+  const scopeTask = function (t) { return homeScope === 'all' ? (mgr ? true : t.ownerEmail === ME.email) : t.ownerEmail === homeScope; };
+  const due = TASKS.filter(function (t) { return t.status === 'open' && scopeTask(t) && (Date.parse(t.dueAt) < Date.now() || localYmd(new Date(t.dueAt)) === TODAY); })
+    .sort(function (a, b) { return a.dueAt < b.dueAt ? -1 : 1; });
+  const myday = h('div', { class: 'box span-4' }, h('div', { class: 'box-h' }, h('h3', {}, homeScope === ME.email || !mgr ? 'My day' : 'Due today'), h('span', { class: 'meta' }, due.length + ' tasks'), h('span', { class: 'grow' }),
+      h('button', { class: 'link-btn', onclick: function () { go('today'); } }, 'Open')),
+    due.length ? h('div', { class: 'task-list' }, due.slice(0, 5).map(function (t) { return taskRow(t); })) : h('p', { class: 'meta', style: 'margin:0' }, 'Nothing due today. Plan your next calls from the pipeline.'));
+
+  // needs attention
+  const now = Date.now();
+  const attn = [];
+  leads.filter(function (l) { return OPEN(l.stage) && l.rating === 'hot' && !l.firstContactAt; }).forEach(function (l) { attn.push([l, 'Hot · not contacted', 0]); });
+  leads.filter(function (l) { const f = fuInfo(l); return f && f.cls === 'late'; }).forEach(function (l) { attn.push([l, fuInfo(l).text, 1]); });
+  leads.filter(function (l) { return OPEN(l.stage) && l.firstContactAt && (now - Date.parse(l.lastContactAt || l.firstContactAt)) > 7 * 864e5; })
+    .forEach(function (l) { attn.push([l, 'No contact for ' + Math.floor((now - Date.parse(l.lastContactAt || l.firstContactAt)) / 864e5) + 'd', 2]); });
+  const seen = {}; const attnU = attn.sort(function (a, b) { return a[2] - b[2]; }).filter(function (a) { if (seen[a[0].id]) return false; seen[a[0].id] = 1; return true; });
+  const expiring = UNITS.filter(function (u) { return u.status === 'reserved' && u.leadName && u.reservedUntil && u.reservedUntil <= addDays(TODAY, 2); });
+  const attention = h('div', { class: 'box span-4' }, h('div', { class: 'box-h' }, h('h3', {}, 'Needs attention'), h('span', { class: 'meta' }, (attnU.length + expiring.length) + '')),
+    attnU.length || expiring.length ? h('div', { class: 'attn' },
+      expiring.map(function (u) { return h('button', { class: 'attn-row', onclick: function () { openUnit(u.code); } }, icon('unit'), h('strong', {}, u.code + ' · ' + u.leadName), h('span', { class: 'why' }, 'Reservation ends ' + fmtDay(u.reservedUntil))); }),
+      attnU.slice(0, 7).map(function (a) { return h('button', { class: 'attn-row', onclick: function () { openLead(a[0].id); } }, ratingPill(a[0].rating) || icon('lead'), h('strong', {}, a[0].name || a[0].phone), h('span', { class: 'why' }, a[1])); }),
+      attnU.length > 7 ? h('p', { class: 'meta', style: 'margin:4px 0 0' }, 'and ' + (attnU.length - 7) + ' more in My day') : null)
+      : h('p', { class: 'meta', style: 'margin:0' }, 'All clear. No overdue follow-ups or forgotten leads.'));
+
+  // pipeline
+  const openStages = C.stages.filter(function (s) { return OPEN(s[0]); });
+  const funnel = h('div', { class: 'box span-4' }, h('div', { class: 'box-h' }, h('h3', {}, 'Open pipeline'), h('span', { class: 'meta' }, leads.filter(function (l) { return OPEN(l.stage); }).length + ' leads'), h('span', { class: 'grow' }),
+      h('button', { class: 'link-btn', onclick: function () { go('pipeline'); } }, 'Open')),
+    barList(openStages.map(function (s) { return { label: s[1], dot: 'st-' + s[0], n: leads.filter(function (l) { return (l.stage || 'new') === s[0]; }).length, color: 'var(--st-' + s[0] + ')' }; })),
+    h('div', { class: 'meta' }, 'This month: ' + wonNow.length + ' won · ' + leads.filter(function (l) { return l.stage === 'lost' && inR(l.stageAt, m0[0], TODAY); }).length + ' lost'));
+
+  // sources
+  const src = {}; newNow.forEach(function (l) { src[l.source || 'manual'] = (src[l.source || 'manual'] || 0) + 1; });
+  const srcRows = Object.keys(src).sort(function (a, b) { return src[b] - src[a]; }).map(function (k) {
+    const w = newNow.filter(function (l) { return (l.source || 'manual') === k && l.stage === 'won'; }).length;
+    return { label: SRC[k] || k, n: src[k], v: src[k] + (w ? ' · ' + w + '✓' : '') };
+  });
+  const sources = h('div', { class: 'box ' + (mgr && homeScope === 'all' ? 'span-5' : 'span-6') }, h('div', { class: 'box-h' }, h('h3', {}, 'Where leads came from'), h('span', { class: 'meta' }, monthName(tm))),
+    srcRows.length ? barList(srcRows) : h('p', { class: 'meta', style: 'margin:0' }, 'No new leads this month yet.'));
+
+  // leaderboard
+  let board = null;
+  if (mgr && homeScope === 'all') {
+    const agents = PEOPLE.filter(function (p) { return p.receivesLeads || LEADS.some(function (l) { return l.ownerEmail === p.email; }); });
+    const rows = agents.map(function (p) {
+      const w = LEADS.filter(function (l) { return l.ownerEmail === p.email && l.stage === 'won' && inR(l.stageAt, m0[0], TODAY); });
+      const v = sumVal(w).EGP || 0;
+      const t = TARGETS.find(function (x) { return x.month === tm && x.email === p.email; });
+      const ar = HOME.act ? HOME.act.rows.find(function (r) { return r.email === p.email; }) : null;
+      return { p: p, v: v, deals: w.length, visits: ar ? ar.visit : 0, contacts: ar ? ar.contacts : 0, pct: t && t.salesTarget ? Math.round(v / t.salesTarget * 100) : null };
+    }).sort(function (a, b) { return b.v - a.v || b.deals - a.deals || b.contacts - a.contacts; });
+    board = h('div', { class: 'box span-7' }, h('div', { class: 'box-h' }, h('h3', {}, 'Leaderboard'), h('span', { class: 'meta' }, monthName(tm)), h('span', { class: 'grow' }),
+        h('button', { class: 'link-btn', onclick: function () { go('reports'); } }, 'Reports')),
+      rows.length ? h('div', { class: 'lb' }, rows.map(function (r, i) {
+        return h('div', { class: 'lb-row' + (i === 0 && r.v ? ' first' : '') }, h('span', { class: 'rk' }, i + 1),
+          h('div', { class: 'who' }, av(r.p.email), h('span', {}, nm(r.p.email))),
+          h('div', {}, r.pct != null ? h('div', { class: 'meter', title: r.pct + '% of target' }, h('i', { style: 'width:' + Math.min(100, r.pct) + '%' })) : h('span', { class: 'meta' }, 'No target'),
+            h('div', { class: 'meta', style: 'font-size:12px;margin-top:3px' }, r.deals + ' deals · ' + r.visits + ' visits · ' + r.contacts + ' contacts')),
+          h('div', { class: 'val' }, compact(r.v), h('small', {}, r.pct != null ? r.pct + '% of target' : 'EGP')));
+      })) : h('p', { class: 'meta', style: 'margin:0' }, 'Add your sales team in Settings to see the leaderboard.'));
+  }
+
+  // feed
+  const feedList = (HOME.feed || []).filter(function (a) { const l = leadOf(a.leadId); return !l || inScope(l.ownerEmail) || homeScope === 'all'; }).slice(0, 12);
+  const feed = h('div', { class: 'box span-7' }, h('div', { class: 'box-h' }, h('h3', {}, 'Recent activity')),
+    !HOME.feed ? h('p', { class: 'meta', style: 'margin:0' }, 'Loading…') : feedList.length ? h('div', { class: 'feed' }, feedList.map(function (a) {
+      return h('div', { class: 'feed-item', style: 'cursor:pointer', onclick: function () { openLead(a.leadId); } }, h('span', { class: 'fi' }, icon(FICON[a.type] || 'bell')),
+        h('p', { dir: 'auto' }, feedText(a), a.text && ['call', 'whatsapp', 'visit', 'meeting', 'note'].indexOf(a.type) >= 0 ? h('span', { class: 'meta' }, ' — ' + String(a.text).slice(0, 90)) : null),
+        h('small', {}, rel(a.at)));
+    })) : h('p', { class: 'meta', style: 'margin:0' }, 'No activity yet. Calls, WhatsApps and visits your team logs will show up here.'));
+
+  // inventory
+  const byP = {};
+  UNITS.forEach(function (u) { const p = u.project || 'No project'; const r = byP[p] = byP[p] || { available: 0, reserved: 0, sold: 0, blocked: 0 }; r[u.status] = (r[u.status] || 0) + 1; });
+  const inv = h('div', { class: 'box span-5' }, h('div', { class: 'box-h' }, h('h3', {}, 'Inventory'), h('span', { class: 'grow' }), h('button', { class: 'link-btn', onclick: function () { go('inventory'); } }, 'Open')),
+    Object.keys(byP).length ? Object.keys(byP).sort().map(function (p) {
+      const r = byP[p], tot = r.available + r.reserved + r.sold + r.blocked;
+      const seg = function (k, c) { return r[k] ? h('i', { style: 'width:' + (r[k] / tot * 100) + '%;background:' + c }) : null; };
+      return h('div', { style: 'display:grid;gap:6px' }, h('div', { class: 'box-h' }, h('b', { style: 'font-weight:600' }, p), h('span', { class: 'grow' }), h('span', { class: 'meta' }, Math.round(r.sold / tot * 100) + '% sold')),
+        h('div', { class: 'stack' }, seg('sold', 'var(--accent)'), seg('reserved', 'var(--warn)'), seg('available', 'var(--ok)'), seg('blocked', 'var(--line)')),
+        h('div', { class: 'counts' }, h('span', {}, h('b', {}, r.available), ' available'), h('span', {}, h('b', {}, r.reserved), ' reserved'), h('span', {}, h('b', {}, r.sold), ' sold')));
+    }) : h('p', { class: 'meta', style: 'margin:0' }, isMgr() ? 'Add your units and prices in Inventory.' : 'No units in the inventory yet.'));
+
+  const grid = h('div', { class: 'home-grid' },
+    onboarding(),
+    h('div', { class: 'span-12 tiles' },
+      tile('bolt', 'New leads', nf.format(newNow.length), '', [deltaChip(newNow.length, newPrev.length), ' vs same days last month'], perDay),
+      tile('call', 'Contacted', contactedPct + '%', '', [newNow.length ? 'of this month\'s new leads' : 'no new leads yet']),
+      tile('chat', 'Calls & WhatsApps', calls == null ? '…' : nf.format(calls), '', ['logged this month']),
+      tile('visit', 'Site visits', visits == null ? '…' : nf.format(visits), '', ['this month']),
+      tile('trophy', 'Deals won', nf.format(wonNow.length), '', [deltaChip(wonNow.length, wonPrev.length), ' vs same days last month'], wonDay),
+      tile('money', 'Sales value', compact(valNow.EGP || 0), 'EGP', [deltaChip(valNow.EGP || 0, valPrev.EGP || 0), otherCur ? ' + ' + otherCur : ' vs last month']),
+      tile('clock', 'Avg first response', avgResp == null ? '—' : fmtHours(avgResp), '', ['from assignment to first contact'])),
+    goals, chart, myday, attention, funnel, board, sources, feed, inv);
+  return h('div', {},
+    h('div', { class: 'hello' }, h('div', {}, h('h2', {}, (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '')),
+      h('p', {}, (homeScope === 'all' ? 'The team' : homeScope === ME.email ? 'Your numbers' : nm(homeScope)) + ' for ' + monthName(tm) + ', day ' + dayN + ' of ' + dim + '.')),
+      h('span', { class: 'grow' }), scopeSel),
+    grid);
+}
+
+/* ---------- calendar ---------- */
+function viewCalendar(list) {
+  if (!calMonth) calMonth = TODAY.slice(0, 7);
+  if (!calSel) calSel = TODAY;
+  const ids = {}; list.forEach(function (l) { ids[l.id] = 1; });
+  const items = {};
+  const add = function (d, it) { (items[d] = items[d] || []).push(it); };
+  TASKS.filter(function (t) { return t.status !== 'cancelled' && ownerScope(t.ownerEmail) && (ids[t.leadId] || !leadOf(t.leadId)); })
+    .forEach(function (t) { add(localYmd(new Date(t.dueAt)), { kind: 'task', t: t, at: t.dueAt }); });
+  list.filter(function (l) { return OPEN(l.stage) && l.nextFollowUp; }).forEach(function (l) { add(l.nextFollowUp, { kind: 'fu', l: l, at: l.nextFollowUp + 'T23:59' }); });
+  Object.keys(items).forEach(function (k) { items[k].sort(function (a, b) { return a.at < b.at ? -1 : 1; }); });
+  const first = calMonth + '-01';
+  const fd = new Date(first + 'T12:00:00Z');
+  const offset = (fd.getUTCDay() + 1) % 7; // weeks start on Saturday
+  const start = addDays(first, -offset);
+  const dim = new Date(Date.UTC(fd.getUTCFullYear(), fd.getUTCMonth() + 1, 0)).getUTCDate();
+  const weeks = Math.ceil((offset + dim) / 7);
+  const shift = function (n) { const d = new Date(Date.UTC(fd.getUTCFullYear(), fd.getUTCMonth() + n, 1)); calMonth = d.toISOString().slice(0, 7); render(); };
+  const evChip = function (it) {
+    if (it.kind === 'fu') return h('div', { class: 'cal-ev fu' + (it.l.nextFollowUp < TODAY ? ' late' : '') }, h('i', { class: 'ev-fu' }), h('span', {}, 'Follow up · ' + (it.l.name || it.l.phone)));
+    const l = leadOf(it.t.leadId);
+    return h('div', { class: 'cal-ev', style: it.t.status === 'done' ? 'opacity:.55;text-decoration:line-through' : '' }, h('i', { class: 'ev-' + it.t.type }),
+      h('span', {}, tf.format(new Date(it.t.dueAt)) + ' ' + ((l && (l.name || l.phone)) || it.t.leadName || it.t.title)));
+  };
+  const cells = [];
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = addDays(start, i);
+    const its = items[d] || [];
+    cells.push(h('button', { class: 'cal-day' + (d.slice(0, 7) !== calMonth ? ' out' : '') + (d === TODAY ? ' today' : '') + (d === calSel ? ' sel' : ''),
+      'aria-label': fmtDay(d) + ', ' + its.length + ' items', onclick: function () { calSel = d; render(); } },
+      h('span', { class: 'dn' }, Number(d.slice(8, 10))), its.slice(0, 3).map(evChip), its.length > 3 ? h('span', { class: 'cal-more' }, '+' + (its.length - 3) + ' more') : null));
+  }
+  const sel = items[calSel] || [];
+  const selTasks = sel.filter(function (x) { return x.kind === 'task'; }).map(function (x) { return x.t; });
+  const selFu = sel.filter(function (x) { return x.kind === 'fu'; }).map(function (x) { return x.l; });
+  const legend = h('div', { class: 'legend', style: 'margin:0' }, [['call', 'Call'], ['whatsapp', 'WhatsApp'], ['visit', 'Site visit'], ['meeting', 'Meeting'], ['fu', 'Follow-up']].map(function (k) {
+    return h('span', {}, h('i', { class: 'ev-' + k[0], style: 'border-radius:50%' }), k[1]);
+  }));
+  return h('div', {},
+    h('div', { class: 'cal-head' }, h('button', { class: 'icon-btn', 'aria-label': 'Previous month', onclick: function () { shift(-1); } }, '‹'),
+      h('h2', {}, monthName(calMonth)), h('button', { class: 'icon-btn', 'aria-label': 'Next month', onclick: function () { shift(1); } }, '›'),
+      h('button', { class: 'btn', onclick: function () { calMonth = TODAY.slice(0, 7); calSel = TODAY; render(); } }, 'Today'), h('span', { class: 'grow', style: 'flex:1' }), legend),
+    h('div', { class: 'cal-wrap' },
+      h('div', { class: 'cal' }, ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(function (d) { return h('div', { class: 'cal-dow' }, d); }), cells),
+      h('div', { class: 'box agenda' }, h('div', { class: 'box-h' }, h('h3', {}, new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(calSel + 'T12:00:00Z'))),
+          h('span', { class: 'meta' }, sel.length + ' items')),
+        selTasks.length ? h('div', { class: 'task-list' }, selTasks.map(function (t) { return taskRow(t); })) : null,
+        selFu.length ? [h('span', { class: 'lbl', style: 'margin:4px 0 0' }, 'Follow-ups'), h('div', { class: 'task-list' }, selFu.map(card))] : null,
+        !sel.length ? h('p', { class: 'meta', style: 'margin:0' }, 'Nothing planned. Add tasks from a client\'s profile.') : null)));
+}
+
+/* ---------- targets (settings) ---------- */
+function targetsSec() {
+  const months = [monthBounds(0)[0].slice(0, 7), monthBounds(1)[0].slice(0, 7)];
+  let month = months[0];
+  const agents = PEOPLE.filter(function (p) { return p.receivesLeads || p.role === 'sales'; });
+  const body = h('tbody');
+  let rows = [];
+  const draw = function () {
+    rows = agents.map(function (p) {
+      const t = TARGETS.find(function (x) { return x.month === month && x.email === p.email; }) || {};
+      return { email: p.email, salesTarget: t.salesTarget || '', dealsTarget: t.dealsTarget || '', visitsTarget: t.visitsTarget || '' };
+    });
+    put(body, rows.map(function (r, i) {
+      const inp = function (k, ph) { return h('input', { type: 'number', min: 0, id: 'tg-' + k + '-' + i, value: r[k], placeholder: ph, style: 'width:100%', oninput: function (e) { r[k] = e.target.value; dirty(); } }); };
+      return h('tr', {}, h('td', {}, ownerBadge(r.email)), h('td', {}, inp('salesTarget', 'e.g. 10000000')), h('td', {}, inp('dealsTarget', 'e.g. 3')), h('td', {}, inp('visitsTarget', 'e.g. 15')));
+    }));
+  };
+  draw();
+  const sel = h('select', { id: 'tg-month', onchange: function (e) { month = e.target.value; draw(); } }, months.map(function (m, i) { return h('option', { value: m }, monthName(m) + (i ? ' (next month)' : ' (this month)')); }));
+  return h('section', { class: 'sec' }, h('div', { class: 'sec-h' }, h('h2', {}, 'Monthly targets'), h('span', { class: 'grow', style: 'flex:1' }), sel),
+    h('p', { class: 'hint' }, 'Targets drive the progress bars on Home and the leaderboard. Sales value is in EGP.'),
+    agents.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'users-tbl', style: 'min-width:560px' },
+      h('thead', {}, h('tr', {}, ['Agent', 'Sales value (EGP)', 'Deals', 'Site visits'].map(function (x) { return h('th', {}, x); }))), body))
+      : h('p', { class: 'meta' }, 'Add sales agents in Team and permissions first.'),
+    agents.length ? h('div', { class: 'acts', style: 'justify-content:flex-start;margin-top:10px' }, saveBtn('Save targets', async function () { TARGETS = await api('api_saveTargets', month, rows); })) : null);
+}
+
 /* ---------- refresh ---------- */
 let refreshing = false;
 async function refresh(manual) {
@@ -1218,7 +1758,9 @@ async function refresh(manual) {
   try {
     const r = await api('api_sync');
     LEADS = r.leads; TASKS = r.tasks; UNITS = r.units; TODAY = r.today || TODAY;
-    if (manual) ACT = null;
+    if (r.notifications) NOTIF = r.notifications;
+    if (r.targets) TARGETS = r.targets;
+    if (manual) { ACT = null; HOME.act = null; HOME.feed = null; }
     if (!settingsDirty) render();
     refreshDrawer(true);
     if (manual) toast('Up to date');
@@ -1235,6 +1777,12 @@ $('f-source').addEventListener('change', function (e) { F.source = e.target.valu
 $('f-project').addEventListener('change', function (e) { F.project = e.target.value; render(); });
 $('f-rating').addEventListener('change', function (e) { F.rating = e.target.value; render(); });
 $('add-btn').addEventListener('click', function () { openLead('new'); });
+$('menu-btn').addEventListener('click', function () { $('app').classList.add('nav-open'); });
+$('nav-scrim').addEventListener('click', function () { $('app').classList.remove('nav-open'); });
+$('side-x').addEventListener('click', function () { $('app').classList.remove('nav-open'); });
+$('signout-btn').addEventListener('click', function () { EdenAuth.signOut(); });
+$('theme-btn').addEventListener('click', toggleTheme);
+$('bell').addEventListener('click', toggleNotif);
 $('refresh-btn').addEventListener('click', function () { refresh(true); });
 
 /* ---------- boot (called by auth.js once signed in) ---------- */
@@ -1243,6 +1791,8 @@ function boot() {
   api('api_bootstrap').then(function (b) {
     ME = b.me; PEOPLE = b.people; PROJECTS = b.projects; LEADS = b.leads; TASKS = b.tasks; UNITS = b.units;
     C = b.consts; ADMIN = b.admin || null; TEMPLATES = b.templates || []; CFG = b.cfg || {};
+    NOTIF = b.notifications || NOTIF; TARGETS = b.targets || [];
+    HOME = { act: null, feed: null, key: '', loading: false }; homeScope = '';
     TODAY = b.today || localYmd();
     SL = Object.fromEntries(C.stages); SRC = Object.fromEntries(C.sources); RL = Object.fromEntries(C.ratings);
     USL = Object.fromEntries(C.unitStatuses); TTL = Object.fromEntries(C.taskTypes);

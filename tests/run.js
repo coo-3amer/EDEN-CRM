@@ -264,6 +264,43 @@ const code3 = st.mails.filter(m => /sign-in code/.test(m.subject)).pop().subject
 ok(/expired/.test(post({ fn: 'verifyCode', email: M, code: code3 }).error), 'code expires after 10 minutes');
 st.activeEmail = '';
 
+// 18. profile fields, notifications, targets, files, feed
+st.activeEmail = '';
+as(A, 'api_saveUsers', as(A, 'api_bootstrap').admin.users.map(u => Object.assign(u, { active: true })));
+const P = as(M, 'api_saveLead', { name: 'Profile Client', phone: '01066600000', ownerEmail: SA, nationality: 'Egyptian', occupation: 'Doctor', payment: 'Installments', purpose: 'Investment', unitType: 'Shop', phone2: '01266600000' }).detail.lead;
+ok(P.nationality === 'Egyptian' && P.payment === 'Installments' && P.phone2 === '01266600000', 'profile fields saved');
+as(SA, 'api_saveLead', { id: P.id, sizeRange: '40-60 m²' });
+ok(lead(M, P.id).sizeRange === '40-60 m²' && lead(M, P.id).occupation === 'Doctor', 'profile field edit keeps others');
+const nA = as(SA, 'api_sync').notifications;
+ok(nA.unread >= 1 && nA.list[0].type === 'lead' && nA.list[0].leadId === P.id, 'in-app notification for new lead');
+const nB = as(SB, 'api_sync').notifications;
+ok(!nB.list.some(n => n.leadId === P.id), 'notifications are private');
+ok(as(SA, 'api_markRead', 'all').unread === 0, 'mark all read');
+// sales can add a new deal for their own client
+const dupOwn = as(SA, 'api_saveLead', { name: 'Profile Client', phone: '01066600000', force: true });
+ok(dupOwn.detail && dupOwn.detail.lead.id !== P.id, 'sales can open a second deal for own client');
+// targets
+const month = ymd(new Date(NOW).toISOString()).slice(0, 7);
+throws(() => as(SA, 'api_saveTargets', month, []), /Only managers/, 'sales cannot set targets');
+const tg = as(M, 'api_saveTargets', month, [{ email: SA, salesTarget: 5000000, dealsTarget: 2, visitsTarget: 10 }, { email: SB, salesTarget: 3000000 }]);
+ok(tg.length === 2 && tg.find(t => t.email === SA).dealsTarget === 2, 'targets saved');
+as(M, 'api_saveTargets', month, [{ email: SA, salesTarget: 6000000, dealsTarget: 3 }]);
+ok(as(SA, 'api_sync').targets.length === 1 && as(SA, 'api_sync').targets[0].salesTarget === 6000000, 'sales sees own target, updated');
+// files
+const up = as(SA, 'api_uploadFile', P.id, 'ID copy.pdf', 'application/pdf', Buffer.from('hello pdf').toString('base64'));
+ok(up.files.length === 1 && up.files[0].name === 'ID copy.pdf' && !up.files[0].driveId, 'file uploaded');
+const fid = up.files[0].id;
+ok(Buffer.from(as(M, 'api_getFile', fid).base64, 'base64').toString() === 'hello pdf', 'file downloaded');
+throws(() => as(SB, 'api_getFile', fid), /not one of yours/, 'other agent cannot download');
+throws(() => as(SA, 'api_uploadFile', P.id, 'x', 'text/plain', ''), /empty/, 'empty file rejected');
+ok(as(SA, 'api_getLead', P.id).files.length === 1, 'files listed on lead');
+const del2 = as(SA, 'api_deleteFile', fid);
+ok(del2.files.length === 0 && Object.values(st.drive).every(f => f.trashed), 'file deleted to trash');
+// feed
+const feed = as(SA, 'api_feed', 10);
+ok(feed.length && feed.every(a => as(SA, 'api_sync').leads.some(l => l.id === a.leadId)), 'feed only visible leads');
+ok(as(M, 'api_feed', 50).length >= feed.length, 'manager feed');
+
 // 17. no Arabic left in server messages / emails
 const ar = st.mails.filter(m => /[؀-ۿ]/.test(m.subject));
 ok(!ar.length, 'emails are English');

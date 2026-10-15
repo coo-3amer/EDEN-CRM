@@ -47,6 +47,10 @@ const ACT_LABEL = {
 };
 const LOST_REASONS = ['Price', 'Not interested', 'Bought elsewhere', 'No answer', 'Location', 'Financing / payment plan', 'Wrong number', 'Other'];
 const CURRENCIES = ['EGP', 'USD', 'GEL'];
+const PAYMENT_OPTIONS = ['Cash', 'Installments', 'Mortgage', 'Not decided'];
+const PURPOSE_OPTIONS = ['Investment', 'Own use', 'Commercial', 'Holiday home'];
+const UNIT_TYPE_OPTIONS = ['Apartment', 'Shop', 'Office', 'Clinic', 'Villa', 'Chalet', 'Studio'];
+const MAX_FILE_MB = 10;
 const ROLES = ['admin', 'manager', 'sales'];
 
 // Sheet columns. Only ever ADD columns at the end — never reorder.
@@ -54,7 +58,8 @@ const SCHEMA = {
   Leads: ['id', 'createdAt', 'updatedAt', 'name', 'phone', 'phoneKey', 'email', 'source', 'campaign',
     'project', 'unit', 'budget', 'stage', 'ownerEmail', 'assignedAt', 'nextFollowUp', 'firstContactAt',
     'lastContactAt', 'stageAt', 'dealValue', 'currency', 'lostReason', 'note', 'createdBy',
-    'slaAlertedAt', 'reassignCount', 'externalId', 'rating', 'tags'],
+    'slaAlertedAt', 'reassignCount', 'externalId', 'rating', 'tags',
+    'nationality', 'residence', 'occupation', 'unitType', 'sizeRange', 'payment', 'purpose', 'phone2'],
   Activities: ['id', 'leadId', 'at', 'by', 'type', 'text', 'fromVal', 'toVal'],
   Users: ['email', 'name', 'role', 'active', 'receivesLeads', 'phone'],
   Projects: ['name', 'country', 'units', 'active'],
@@ -62,6 +67,9 @@ const SCHEMA = {
     'reservedAt', 'reservedUntil', 'soldAt', 'notes', 'updatedAt'],
   Tasks: ['id', 'leadId', 'title', 'type', 'dueAt', 'ownerEmail', 'status', 'createdAt', 'createdBy', 'doneAt',
     'remindedAt', 'calendarEventId', 'notes'],
+  Targets: ['month', 'email', 'salesTarget', 'dealsTarget', 'visitsTarget'],
+  Notifications: ['id', 'email', 'at', 'type', 'text', 'leadId', 'read'],
+  Files: ['id', 'leadId', 'name', 'mime', 'size', 'driveId', 'at', 'by'],
   Settings: ['key', 'value', 'description'],
   Inbox: ['receivedAt', 'source', 'payload', 'status', 'leadId', 'error'],
 };

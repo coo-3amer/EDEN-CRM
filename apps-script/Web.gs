@@ -19,6 +19,8 @@ function apiMap_() {
     api_activityReport: api_activityReport, api_importRows: api_importRows, api_saveProjects: api_saveProjects,
     api_saveTemplates: api_saveTemplates, api_saveUsers: api_saveUsers, api_saveSettings: api_saveSettings,
     api_testMeta: api_testMeta, api_runAutomationsNow: api_runAutomationsNow,
+    api_markRead: api_markRead, api_saveTargets: api_saveTargets, api_uploadFile: api_uploadFile,
+    api_getFile: api_getFile, api_deleteFile: api_deleteFile, api_feed: api_feed,
   };
 }
 
