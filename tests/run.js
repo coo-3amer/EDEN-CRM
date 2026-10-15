@@ -301,6 +301,10 @@ const feed = as(SA, 'api_feed', 10);
 ok(feed.length && feed.every(a => as(SA, 'api_sync').leads.some(l => l.id === a.leadId)), 'feed only visible leads');
 ok(as(M, 'api_feed', 50).length >= feed.length, 'manager feed');
 
+// 19. a sheet added in a newer version is created on first use
+delete ss.sheets.Notifications; fresh();
+ok(as(SA, 'api_sync').notifications.unread === 0 && ss.sheets.Notifications && ss.sheets.Notifications.data[0][0] === 'id', 'missing sheet auto-created');
+
 // 17. no Arabic left in server messages / emails
 const ar = st.mails.filter(m => /[؀-ۿ]/.test(m.subject));
 ok(!ar.length, 'emails are English');

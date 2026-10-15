@@ -15,7 +15,15 @@ function ss_() {
 }
 
 function sh_(name) {
-  const sh = ss_().getSheetByName(name);
+  let sh = ss_().getSheetByName(name);
+  if (!sh && SCHEMA[name]) {
+    // a sheet added in a newer version: create it on first use, no setup() needed
+    const head = SCHEMA[name];
+    sh = ss_().insertSheet(name);
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#DCE9E2');
+    sh.getRange(1, 1, sh.getMaxRows(), head.length).setNumberFormat('@');
+    sh.setFrozenRows(1);
+  }
   if (!sh) throw new Error('Sheet "' + name + '" is missing. Run setup() again.');
   return sh;
 }
